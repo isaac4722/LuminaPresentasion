@@ -104,6 +104,8 @@ namespace FusionHP.Managed.Interop
                 informe.MsgError = "error al importar: " + ex.Message;
                 return null;
             }
+            if (programa == null)
+                return null;  // MsgError ya lo fijó ImportarDesdeZip
 
             if (programa.Escenarios.Count == 0)
                 informe.Avisos.Add("el paquete no produjo escenarios");
@@ -548,6 +550,8 @@ namespace FusionHP.Managed.Interop
         {
             var resultado = new List<XmlElement>();
             if (padre == null) return resultado;
+            // Pila con empuje invertido: el recorrido sale en orden de
+            // documento (los runs de un párrafo deben llegar en orden).
             var pila = new Stack<XmlNode>();
             foreach (XmlNode n in padre.ChildNodes) pila.Push(n);
             while (pila.Count > 0)
@@ -557,7 +561,8 @@ namespace FusionHP.Managed.Interop
                 if (el == null) continue;
                 if (Local(el.LocalName ?? el.Name) == local)
                     resultado.Add(el);
-                foreach (XmlNode h in el.ChildNodes) pila.Push(h);
+                for (int i = el.ChildNodes.Count - 1; i >= 0; --i)
+                    pila.Push(el.ChildNodes[i]);
             }
             return resultado;
         }
