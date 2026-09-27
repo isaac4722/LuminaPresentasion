@@ -25,6 +25,7 @@
     <ProjectReference Include="..\FusionHP.Managed\FusionHP.Managed.csproj">
       <Project>{A1B2C3D4-0001-0001-0001-000000000001}</Project>
       <Name>FusionHP.Managed</Name>
+      <SetTargetFramework>TargetFramework=$(TargetFramework)</SetTargetFramework>
     </ProjectReference>
   </ItemGroup>
 
