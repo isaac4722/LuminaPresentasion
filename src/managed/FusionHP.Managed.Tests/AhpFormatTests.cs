@@ -32,6 +32,14 @@ namespace FusionHP.Managed.Tests
             Assert(c.R == 0x01 && c.G == 0x23 && c.B == 0x45, "Hex debe parsear a 01,23,45");
         }
 
+        [Test]
+        public static void Element_Pptx_ModoPorDefectoEsCom()
+        {
+            var e = new Element { Id = "el-1", Tipo = TipoElemento.Pptx };
+            Assert(e.ModoPptx == ModoPptx.Com,
+                "Un elemento pptx sin modo explicito debe quedar en Com (compatibilidad)");
+        }
+
         private static void Assert(bool condicion, string mensaje)
         {
             if (!condicion) throw new System.Exception(mensaje);

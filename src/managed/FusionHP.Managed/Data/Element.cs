@@ -6,6 +6,7 @@ namespace FusionHP.Managed.Data
 {
     public enum TipoElemento { Texto, Versiculo, Imagen, Video, LowerThird, Pptx, Desconocido }
     public enum ModoVersiculo { Completo, Tercio }
+    public enum ModoPptx { Com, Directo, Desconocido }
     public enum AjusteImagen { Cubrir, Contener, Estirar }
 
     public class LineaTexto
@@ -28,6 +29,7 @@ namespace FusionHP.Managed.Data
         public string Biblia = "";
         public string TextoVersiculo = "";
         public ModoVersiculo Modo = ModoVersiculo.Completo;
+        public ModoPptx ModoPptx = ModoPptx.Com;   // solo tipo Pptx
         public string Ruta = "";           // imagen/video/pptx
         public AjusteImagen Ajuste = AjusteImagen.Cubrir;
         public bool BucleVideo = false;
