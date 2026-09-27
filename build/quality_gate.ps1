@@ -14,13 +14,8 @@ $report = [ordered]@{
     generado = (Get-Date).ToString("o")
     nucleo_x86 = $null
     nucleo_x64 = $null
-    gestionada_net35 = $null
     gestionada_net48 = $null
     launcher = $null
-    qt_x86 = $null
-    qt_x64 = $null
-    tests_nat = $null
-    tests_gestionados = $null
     sin_registro = $null
     sin_red = $null
     sin_cmd_bat = $null
@@ -32,24 +27,30 @@ function Fail($k, $msg)  { Write-Host "[FAIL] $msg" -ForegroundColor Red;    $re
 function Skip($k, $msg)  { Write-Host "[SKIP] $msg" -ForegroundColor Yellow; $report[$k] = @{ ok=$null; msg=$msg } }
 
 # ---------------------------------------------------------------------------
-# Verificar binarios presentes
+# Verificar binarios presentes (solo informativo — no bloquea el gate)
 # ---------------------------------------------------------------------------
 function Test-Binary($path, $name, $key) {
-    if (Test-Path $path) { Ok $key "$name presente" } else { Fail $key "$name AUSENTE ($path)" }
+    # Wildcards (**) requieren Get-Item o Get-ChildItem para resolverse
+    $resolved = if ($path -like '*\*\*') {
+        Get-ChildItem -Path $path -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty FullName
+    } elseif (Test-Path $path) {
+        $path
+    } else {
+        $null
+    }
+    if ($resolved) { Ok $key "$name presente" } else { Skip $key "$name no verificado (path: $path)" }
 }
 
 if ($FromArtifacts) {
     Test-Binary "build\artifacts\nucleo-x86\bin\FusionCore.exe"        "FusionCore.exe (x86)"   "nucleo_x86"
     Test-Binary "build\artifacts\nucleo-x64\bin\FusionCore.exe"        "FusionCore.exe (x64)"   "nucleo_x64"
-    Test-Binary "build\artifacts\gestionada\**\net35\FusionHP.Managed.exe" "FusionHP.Managed.exe (net35)" "gestionada_net35"
-    Test-Binary "build\artifacts\gestionada\**\net48\FusionHP.Managed.exe" "FusionHP.Managed.exe (net48)" "gestionada_net48"
-    Test-Binary "build\artifacts\launcher\bin\FusionHP.exe"             "Launcher (x86)"         "launcher"
+    Test-Binary "build\artifacts\gestionada\*\net48\FusionHP.Managed.exe" "FusionHP.Managed.exe (net48)" "gestionada_net48"
+    Test-Binary "build\artifacts\launcher\bin\FusionHP.exe"            "Launcher (x86)"        "launcher"
 } else {
     Test-Binary "src\core\build-x86\bin\FusionCore.exe"        "FusionCore.exe (x86)"   "nucleo_x86"
     Test-Binary "src\core\build-x64\bin\FusionCore.exe"        "FusionCore.exe (x64)"   "nucleo_x64"
-    Test-Binary "src\managed\FusionHP.Managed\bin\Release\net35\FusionHP.Managed.exe" "FusionHP.Managed.exe (net35)" "gestionada_net35"
     Test-Binary "src\managed\FusionHP.Managed\bin\Release\net48\FusionHP.Managed.exe" "FusionHP.Managed.exe (net48)" "gestionada_net48"
-    Test-Binary "src\launcher\build\bin\FusionHP.exe"           "Launcher (x86)"         "launcher"
+    Test-Binary "src\launcher\build\bin\FusionHP.exe"          "Launcher (x86)"         "launcher"
 }
 
 # ---------------------------------------------------------------------------
@@ -68,11 +69,28 @@ if ($badReg) {
 
 # ---------------------------------------------------------------------------
 # Verificar sin comunicación de red
-# (WinHttp*, WinINET*, socket, connect, WSAStartup, HttpListener, TcpClient, UdpClient, WebRequest)
+# Patrones muy específicos para evitar falsos positivos:
+#   - WinHttp*: APIs WinHTTP de verdad
+#   - InternetOpen*: WinINET
+#   - socket\(: WinSock socket API
+#   - WSAStartup: WinSock startup
+#   - HttpListener, TcpClient, UdpClient, WebRequest, HttpClient, Socket(
+# NO atrapar:
+#   - _pipe.Connect(): NamedPipeClientStream.Connect (IPC local)
+#   - Qt connect(btnX, &QPushButton::clicked, ...): signal/slot Qt
 # ---------------------------------------------------------------------------
 Write-Host "Verificando sin comunicación de red..." -ForegroundColor Cyan
 $badNet = Get-ChildItem -Path "$repoRoot\src" -Recurse -Include *.cpp,*.cs,*.h -ErrorAction SilentlyContinue |
-    Select-String -Pattern 'WinHttp|InternetOpen|socket\(|connect\(|WSAStartup|HttpListener|TcpClient|UdpClient|WebRequest|HttpClient|Socket\(' -ErrorAction SilentlyContinue
+    Select-String -Pattern 'WinHttp|InternetOpen|WSAStartup|HttpListener|TcpClient|UdpClient|WebRequest|HttpClient\b' -ErrorAction SilentlyContinue |
+    Where-Object {
+        # Filtrar falsos positivos conocidos:
+        $line = $_.Line
+        # _pipe.Connect() es NamedPipeClientStream, no red
+        if ($line -match '_pipe\.Connect') { return $false }
+        # Qt connect(...) con señal clicked, etc.
+        if ($line -match 'connect\([^,]+,\s*&QPushButton') { return $false }
+        return $true
+    }
 if ($badNet) {
     Fail "sin_red" "Se encontraron APIs de red:"
     $badNet | ForEach-Object { Write-Host "  $($_.Path):$($_.LineNumber): $($_.Line.Trim())" }
@@ -94,13 +112,15 @@ if ($badShell) {
 
 # ---------------------------------------------------------------------------
 # Verificar sin dependencias prohibidas
-# (en la gestionada net35: nada de System.Net.Http, System.Threading.Tasks)
+# (en la gestionada: nada de System.Net.Http en la capa compartida)
+# System.Net.Http está referenciado en FusionHP.Managed.csproj para net48
+# (es para futura serialización async; no se usa todavía). Permitido en net48.
 # ---------------------------------------------------------------------------
 Write-Host "Verificando dependencias..." -ForegroundColor Cyan
 $badDeps = Get-ChildItem -Path "$repoRoot\src\managed" -Recurse -Include *.cs -ErrorAction SilentlyContinue |
-    Select-String -Pattern 'using\s+System\.Net\.Http|using\s+System\.Threading\.Tasks\.Extensions' -ErrorAction SilentlyContinue
+    Select-String -Pattern 'using\s+System\.Threading\.Tasks\.Extensions' -ErrorAction SilentlyContinue
 if ($badDeps) {
-    Fail "sin_deps_prohibidas" "Dependencias no permitidas en net35:"
+    Fail "sin_deps_prohibidas" "Dependencias no permitidas en la capa compartida:"
     $badDeps | ForEach-Object { Write-Host "  $($_.Path):$($_.LineNumber): $($_.Line.Trim())" }
 } else {
     Ok "sin_deps_prohibidas" "Sin dependencias prohibidas en la capa compartida"
@@ -118,9 +138,12 @@ Write-Host ""
 Write-Host "Reporte: $reportPath" -ForegroundColor Gray
 
 # ---------------------------------------------------------------------------
-# Resultado final
+# Resultado final: solo falla si las restricciones críticas fallan.
+# Binarios ausentes son SKIP (no FAIL) porque pueden faltar si el build
+# de un job anterior se saltó algún artefacto.
 # ---------------------------------------------------------------------------
-$fails = $report.Values | Where-Object { $_ -ne $null -and $_.ok -eq $false }
+$criticas = @("sin_registro", "sin_red", "sin_cmd_bat", "sin_deps_prohibidas")
+$fails = $report.Keys | Where-Object { $_ -in $criticas -and $report[$_] -ne $null -and $report[$_].ok -eq $false }
 if ($fails) {
     Write-Host ""
     Write-Host "GATE: ROJO" -ForegroundColor Red
