@@ -234,3 +234,36 @@ Stage Summary:
 - Pendiente: Sección 9.2/9.3 (modo 'modo' del elemento pptx en ahp.v1
   + proyección archivo-original + exportadores PPTX/PDF/imágenes).
 - Ejecución de CI: https://github.com/isaac4722/LuminaPresentasion/actions/runs/36352041900
+
+---
+## Sesión 2026-09-27 (IV) — Secciones 9.2/9.3 y auditoría completa
+
+Work Log:
+- Auditoría de redondeo ahp.v1 en TODOS los campos (patrón "parsear
+  pero no serializar"): hallados y arreglados 4 campos que el
+  guardado perdía en silencio: modo_versiculo, ajuste, bucle, audio.
+- Validar ahora rechaza tipos de elemento desconocidos y modo pptx
+  inválido (punto 3 de Validación del formato, antes incumplido).
+- Sección 9.2: ModoPptx (com/directo) en ahp.v1 con compatibilidad
+  hacia atrás (falta → com) + PlanPptx::Planificar: solo .pptx/.pptm,
+  macros NUNCA (regla .pptm), modo com sin PowerPoint → error
+  explícito sin retroceso silencioso.
+- Sección 9.3 (pieza portable): PlanExport::Planificar para
+  PPTX/PDF/imágenes 1080p, conteo de unidades (1 diapositiva por
+  línea de texto, 1 por medio/pptx) y nombre base saneado. La
+  ejecución real queda en el shell Windows (net48/COM/D2D).
+- Espejo gestionado sincronizado: ModoPptx en Element.cs + test.
+- Sesion (session.json) auditada: ida y vuelta simétrica, sin
+  campos perdidos. La capa gestionada aún no serializa JSON (no
+  hay bug de redondeo posible ahí todavía).
+
+Stage Summary:
+- Verificación local: 63 test cases / 366 aserciones en verde
+  (gcc-14). Espejo gestionado compilado y testeado en CI.
+- Commits: 4b17ff6 fix(ahp), b85abbc feat(pptx), 064ca6f feat(gestion).
+- CI VERDE 7/7 en punta de main (064ca6f):
+  run 36354933278. Runs de código previos también verdes.
+- Pendiente siguiente sesión: conectar PlanPptx/PlanExport al shell
+  Windows (host COM de PowerPoint, render directo de diapositivas,
+  exportadores reales con OpenXML/PdfSharp/D2D) — requiere
+  verificación por compilación MSVC en CI pieza a pieza.
