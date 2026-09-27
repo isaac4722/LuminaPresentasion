@@ -120,11 +120,15 @@ jobs:
         working-directory: src/managed
         env:
           FrameworkPathOverride: C:\Windows\Microsoft.NET\Framework\v3.5
-        run: msbuild FusionHP.Managed.sln /p:Configuration=Release /p:Platform="Any CPU" /p:TargetFramework=net35 /m /v:minimal
+        run: |
+          msbuild FusionHP.Managed\FusionHP.Managed.csproj /p:Configuration=Release /p:TargetFramework=net35 /m /v:minimal
+          msbuild FusionHP.Managed.Tests\FusionHP.Managed.Tests.csproj /p:Configuration=Release /p:TargetFramework=net35 /m /v:minimal
 
       - name: Build net48
         working-directory: src/managed
-        run: msbuild FusionHP.Managed.sln /p:Configuration=Release /p:Platform="Any CPU" /p:TargetFramework=net48 /m /v:minimal
+        run: |
+          msbuild FusionHP.Managed\FusionHP.Managed.csproj /p:Configuration=Release /p:TargetFramework=net48 /m /v:minimal
+          msbuild FusionHP.Managed.Tests\FusionHP.Managed.Tests.csproj /p:Configuration=Release /p:TargetFramework=net48 /m /v:minimal
 
       - name: Tests gestionados
         working-directory: src/managed
