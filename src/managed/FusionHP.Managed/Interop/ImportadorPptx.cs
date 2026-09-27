@@ -550,10 +550,12 @@ namespace FusionHP.Managed.Interop
         {
             var resultado = new List<XmlElement>();
             if (padre == null) return resultado;
-            // Pila con empuje invertido: el recorrido sale en orden de
-            // documento (los runs de un párrafo deben llegar en orden).
+            // Pila con empuje invertido (también el inicial): el
+            // recorrido sale en orden de documento (los runs de un
+            // párrafo deben llegar en orden).
             var pila = new Stack<XmlNode>();
-            foreach (XmlNode n in padre.ChildNodes) pila.Push(n);
+            for (int i = padre.ChildNodes.Count - 1; i >= 0; --i)
+                pila.Push(padre.ChildNodes[i]);
             while (pila.Count > 0)
             {
                 var n = pila.Pop();
