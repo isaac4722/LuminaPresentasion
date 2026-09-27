@@ -1,0 +1,10 @@
+// Generado por CMake desde data/schema/bible.sql — NO editar a mano.
+#pragma once
+
+namespace fusion::esquema {
+
+inline constexpr char kEsquemaBiblia[] = R"esqsql(
+@FUSION_SCHEMA_BIBLIA@
+)esqsql";
+
+} // namespace fusion::esquema

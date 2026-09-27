@@ -42,6 +42,18 @@ set(FUSION_INCLUDE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/include)
 set(FUSION_SRC_DIR     ${CMAKE_CURRENT_SOURCE_DIR}/src)
 set(FUSION_THIRD_PARTY ${CMAKE_CURRENT_SOURCE_DIR}/third_party)
 
+# Esquemas SQLite embebidos en el binario (fuente de verdad: data/schema/).
+# Evita dependencias del CWD en tests, CLI y runtime.
+set(FUSION_GENERATED_DIR ${CMAKE_BINARY_DIR}/generated)
+file(READ ${CMAKE_CURRENT_SOURCE_DIR}/../../data/schema/bible.sql       FUSION_SCHEMA_BIBLIA)
+file(READ ${CMAKE_CURRENT_SOURCE_DIR}/../../data/schema/cancionero.sql  FUSION_SCHEMA_CANCIONERO)
+configure_file(
+    ${CMAKE_CURRENT_SOURCE_DIR}/schema_biblia.h.in
+    ${FUSION_GENERATED_DIR}/esquema_biblia.h @ONLY)
+configure_file(
+    ${CMAKE_CURRENT_SOURCE_DIR}/schema_cancionero.h.in
+    ${FUSION_GENERATED_DIR}/esquema_cancionero.h @ONLY)
+
 # ---------------------------------------------------------------------------
 # Terceros (single-header + SQLite amalgama)
 # ---------------------------------------------------------------------------
@@ -96,6 +108,7 @@ add_executable(FusionCore WIN32
 
 target_include_directories(FusionCore PRIVATE
     ${FUSION_INCLUDE_DIR}
+    ${FUSION_GENERATED_DIR}
 )
 
 target_link_libraries(FusionCore PRIVATE
@@ -136,6 +149,7 @@ if(FUSION_BUILD_TESTS)
     target_include_directories(fusion_tests PRIVATE
         ${FUSION_INCLUDE_DIR}
         ${FUSION_THIRD_PARTY}
+        ${FUSION_GENERATED_DIR}
     )
     target_link_libraries(fusion_tests PRIVATE
         fusion_third_party

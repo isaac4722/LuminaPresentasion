@@ -5,10 +5,10 @@
 
 #include "sqlite3.h"
 #include "json.hpp"
+#include "esquema_cancionero.h"   // generado por CMake: esquema embebido
 
-#include <fstream>
-#include <sstream>
 #include <string>
+#include <sstream>
 #include <vector>
 
 namespace fusion {
@@ -29,12 +29,9 @@ SongDatabase::~SongDatabase() { Cerrar(); }
 
 bool SongDatabase::Abrir(const std::string& ruta_fdb) {
     if (sqlite3_open(ruta_fdb.c_str(), &impl_->db) != SQLITE_OK) return false;
-    // Cargar esquema si está vacío (creación inicial)
-    std::ifstream f("data/schema/cancionero.sql");
-    if (f) {
-        std::stringstream ss; ss << f.rdbuf();
-        impl_->Ejecutar(ss.str().c_str());
-    }
+    // Esquema embebido en el binario (generado desde data/schema/
+    // cancionero.sql): sin dependencia del CWD; CREATE IF NOT EXISTS.
+    impl_->Ejecutar(fusion::esquema::kEsquemaCancionero);
     return true;
 }
 

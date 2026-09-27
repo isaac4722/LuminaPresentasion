@@ -7,12 +7,11 @@
 #include "fusion/importers/TsvBible.h"
 
 #include "sqlite3.h"
+#include "esquema_biblia.h"   // generado por CMake: esquema embebido
 
 #include <algorithm>
 #include <cctype>
-#include <fstream>
 #include <map>
-#include <sstream>
 #include <string>
 #include <vector>
 
@@ -233,12 +232,9 @@ BibleDatabase::~BibleDatabase() { Cerrar(); }
 
 bool BibleDatabase::Abrir(const std::string& ruta_fdb) {
     if (sqlite3_open(ruta_fdb.c_str(), &impl_->db) != SQLITE_OK) return false;
-    // Cargar esquema si está vacío (creación inicial, llena libros 1..66)
-    std::ifstream f("data/schema/bible.sql");
-    if (f) {
-        std::stringstream ss; ss << f.rdbuf();
-        impl_->Ejecutar(ss.str().c_str());
-    }
+    // Esquema embebido en el binario (generado desde data/schema/bible.sql):
+    // sin dependencia del CWD; CREATE IF NOT EXISTS + libros semilla 1..66.
+    impl_->Ejecutar(fusion::esquema::kEsquemaBiblia);
     return true;
 }
 

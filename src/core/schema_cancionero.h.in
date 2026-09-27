@@ -1,0 +1,10 @@
+// Generado por CMake desde data/schema/cancionero.sql — NO editar a mano.
+#pragma once
+
+namespace fusion::esquema {
+
+inline constexpr char kEsquemaCancionero[] = R"esqsql(
+@FUSION_SCHEMA_CANCIONERO@
+)esqsql";
+
+} // namespace fusion::esquema
