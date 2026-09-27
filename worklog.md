@@ -267,3 +267,40 @@ Stage Summary:
   Windows (host COM de PowerPoint, render directo de diapositivas,
   exportadores reales con OpenXML/PdfSharp/D2D) — requiere
   verificación por compilación MSVC en CI pieza a pieza.
+
+---
+## Sesión 2026-09-28 (V) — lector directo de paquetes PPTX (9.2)
+
+Work Log:
+- Base del render "directo" (Sección 9.2): LectorPptx
+  (PptxDirecto.h/.cpp), lector portable de .pptx/.pptm ISO/IEC-29500
+  sin dependencias nuevas: ZIP por directorio central (ZIP64
+  defensivo, CRC32 siempre, límite antizip-bomb 256 MiB), inflador
+  RFC 1951 propio (almacenado/fijo/dinámico) y mini-extractor XML
+  (entidades, UTF-8).
+- Recorrido OPC por Type: _rels/.rels → officeDocument →
+  presentation.xml → relaciones → p:sldIdLst (orden real de
+  proyección) → ppt/slides/slideN.xml. Extrae título
+  (title/ctrTitle), párrafos (shapes, cuadros y tablas), runs unidos
+  y sldSz en EMU.
+- Leer no ejecuta nada (regla .pptm). Diapositiva ausente: aviso y el
+  índice conserva su posición original.
+- Bug hallado en verificación local: el lector exigía
+  presentation.xml.rels aunque no hubiera diapositivas declaradas →
+  tolerado si sldIdLst está vacío; error explícito si hay sldId sin
+  parte de relaciones.
+- Paquete de prueba embebido con deflate real de zlib
+  (tests/native/pptx_muestra.h, generado por
+  scripts/gen_pptx_muestra.py). 13 casos nuevos: contenido exacto,
+  paquetes rotos (no-zip, truncado, CRC corrupto, sin
+  officeDocument), coherencia PlanPptx ↔ EsPaquetePptx.
+- docs/agent/pptx_directo.md: alcance v1 (texto con tema activo; sin
+  imágenes internas ni estilos por-run, siguiente pieza) y defensas.
+
+Stage Summary:
+- Verificación local: 76 test cases / 429 aserciones en verde
+  (gcc-14, -Wall -Wextra, sin warnings).
+- Commit e86e354; CI 7/7 success (run 36357258286).
+- Siguiente pieza: rasterizador del render directo en el shell
+  Windows (DiapositivaPptx + tema → Direct2D), y luego exportadores
+  reales (OpenXML/PdfSharp/D2D) conectando PlanExport.
