@@ -150,3 +150,61 @@ TEST_CASE("AhpFormat: pptx modo com/directo redondea por Serializar/Cargar") {
     CHECK(p2.escenarios[0].elementos[0].modo_pptx == ModoPptx::Directo);
     CHECK(p2.escenarios[0].elementos[1].modo_pptx == ModoPptx::Com);
 }
+
+TEST_CASE("AhpFormat: fondo de escenario y tam_fuente_pt redondean") {
+    Programa p;
+    p.titulo = "Fondo";
+    Escenario e; e.id = "esc-1"; e.nombre = "Canto";
+    e.fondo = "#1A2B3C";
+    Elemento t; t.id = "el-1"; t.tipo = TipoElemento::Texto;
+    t.titulo = "Letra";
+    LineaTexto l; l.texto = "Grande es tu fidelidad";
+    t.lineas.push_back(l);
+    t.tam_fuente_pt = 32.0;
+    e.elementos.push_back(t);
+    p.escenarios.push_back(e);
+
+    const std::string s = AhpFormat::Serializar(p);
+    CHECK(s.find("\"fondo\"") != std::string::npos);
+    CHECK(s.find("32") != std::string::npos);
+
+    Programa p2;
+    std::string err;
+    REQUIRE(AhpFormat::CargarFromString(s, &p2, &err));
+    REQUIRE(p2.escenarios.size() == 1);
+    CHECK(p2.escenarios[0].fondo == "#1A2B3C");
+    REQUIRE(p2.escenarios[0].elementos.size() == 1);
+    CHECK(p2.escenarios[0].elementos[0].tam_fuente_pt == doctest::Approx(32.0));
+}
+
+TEST_CASE("AhpFormat: fondo vacio y tam 0 no se serializan (heredan)") {
+    Programa p;
+    Escenario e; e.id = "esc-1"; e.nombre = "E";
+    Elemento t; t.id = "el-1"; t.tipo = TipoElemento::Texto;
+    e.elementos.push_back(t);
+    p.escenarios.push_back(e);
+
+    const std::string s = AhpFormat::Serializar(p);
+    CHECK(s.find("fondo") == std::string::npos);
+    CHECK(s.find("tam_fuente_pt") == std::string::npos);
+
+    Programa p2;
+    std::string err;
+    REQUIRE(AhpFormat::CargarFromString(s, &p2, &err));
+    CHECK(p2.escenarios[0].fondo.empty());
+    CHECK(p2.escenarios[0].elementos[0].tam_fuente_pt == doctest::Approx(0.0));
+}
+
+TEST_CASE("AhpFormat: fondo con color invalido se rechaza en Validar") {
+    Programa p;
+    Escenario e; e.id = "esc-1"; e.nombre = "E"; e.fondo = "rojo";
+    p.escenarios.push_back(e);
+    std::string err;
+    CHECK_FALSE(AhpFormat::Validar(p, &err));
+    CHECK(err.find("fondo") != std::string::npos);
+
+    Escenario e2; e2.id = "esc-2"; e2.nombre = "E2"; e2.fondo = "#ABC";
+    Programa p2; p2.escenarios.push_back(e2);
+    err.clear();
+    CHECK(AhpFormat::Validar(p2, &err));
+}

@@ -67,6 +67,10 @@ struct Elemento {
     std::string sub_lower;       // lower_third
     std::string tema_override;
     std::string notas;
+    double      tam_fuente_pt = 0.0;  // texto: tamaño uniforme de la caja
+                                      // (sz/100 de PresentationML al
+                                      // importar PPTX, doc 9.2.3);
+                                      // 0 = hereda del tema.
 };
 
 struct Escenario {
@@ -74,6 +78,9 @@ struct Escenario {
     std::string nombre;
     std::string notas;
     std::string tema;
+    std::string fondo;   // color sólido del escenario ("#RRGGBB"/"#RGB")
+                         // o vacío = hereda del tema. Destino del "fondo
+                         // del diseño" al importar PPTX (doc 9.2.6).
     std::vector<Elemento> elementos;
 };
 

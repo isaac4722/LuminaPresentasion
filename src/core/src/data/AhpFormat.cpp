@@ -53,6 +53,19 @@ AjusteImagen ParseAjuste(const std::string& s) {
     return AjusteImagen::Cubrir;
 }
 
+// "#RGB" o "#RRGGBB" con dígitos hexadecimales (fondo de escenario).
+bool EsColorHexValido(const std::string& s) {
+    if (s.size() != 4 && s.size() != 7) return false;
+    if (s[0] != '#') return false;
+    for (size_t i = 1; i < s.size(); ++i) {
+        const char c = s[i];
+        const bool hex = (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') ||
+                         (c >= 'A' && c <= 'F');
+        if (!hex) return false;
+    }
+    return true;
+}
+
 } // namespace
 
 bool AhpFormat::Cargar(const std::string& ruta, Programa* out,
@@ -97,6 +110,7 @@ bool AhpFormat::CargarFromString(const std::string& json_text, Programa* out,
         esc.nombre = ej.value("nombre", "");
         esc.notas  = ej.value("notas", "");
         esc.tema   = ej.value("tema", "");
+        esc.fondo  = ej.value("fondo", "");
         const auto elementos = ej.value("elementos", nlohmann::json::array());
         for (const auto& elj : elementos) {
             Elemento e;
@@ -137,6 +151,7 @@ bool AhpFormat::CargarFromString(const std::string& json_text, Programa* out,
             e.audio_video      = elj.value("audio", true);
             e.sub_lower        = elj.value("sub", "");
             e.tema_override    = elj.value("tema_override", "");
+            e.tam_fuente_pt    = elj.value("tam_fuente_pt", 0.0);
             e.notas            = elj.value("notas", "");
             esc.elementos.push_back(std::move(e));
         }
@@ -162,6 +177,7 @@ std::string AhpFormat::Serializar(const Programa& p) {
             {"id", e.id}, {"nombre", e.nombre},
             {"notas", e.notas}, {"tema", e.tema}
         };
+        if (!e.fondo.empty()) ej["fondo"] = e.fondo;
         nlohmann::json elems = nlohmann::json::array();
         for (const auto& el : e.elementos) {
             nlohmann::json elj = {{"id", el.id}, {"titulo", el.titulo}};
@@ -204,6 +220,8 @@ std::string AhpFormat::Serializar(const Programa& p) {
             }
             if (!el.sub_lower.empty())   elj["sub"]        = el.sub_lower;
             if (!el.tema_override.empty()) elj["tema_override"] = el.tema_override;
+            if (el.tipo == TipoElemento::Texto && el.tam_fuente_pt > 0.0)
+                elj["tam_fuente_pt"] = el.tam_fuente_pt;
             if (!el.notas.empty())       elj["notas"]       = el.notas;
             elems.push_back(elj);
         }
@@ -238,6 +256,14 @@ bool AhpFormat::Validar(const Programa& p, std::string* msg_error) {
     }
     // IDs únicos de elementos dentro de cada escenario + tipos/modos válidos
     for (const auto& e : p.escenarios) {
+        // Fondo de escenario con formato de color válido (o vacío).
+        if (!e.fondo.empty() && !EsColorHexValido(e.fondo)) {
+            if (msg_error) {
+                *msg_error = "Escenario con fondo inválido (use "
+                             "#RGB o #RRGGBB): " + e.nombre;
+            }
+            return false;
+        }
         std::vector<std::string> el_ids;
         for (const auto& el : e.elementos) {
             el_ids.push_back(el.id);
