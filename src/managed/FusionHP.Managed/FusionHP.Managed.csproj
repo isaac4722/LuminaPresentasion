@@ -8,7 +8,7 @@
     <RootNamespace>FusionHP.Managed</RootNamespace>
     <AssemblyName>FusionHP.Managed</AssemblyName>
     <UseWindowsForms>true</UseWindowsForms>
-    <ApplicationManifest>App.config</ApplicationManifest>
+    <TargetFrameworks>net35;net48</TargetFrameworks>
   </PropertyGroup>
 
   <ItemGroup>

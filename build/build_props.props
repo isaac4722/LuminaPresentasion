@@ -1,7 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  build/build_props.props — Propiedades MSBuild comunes para la capa gestionada
-  Importado por cada .csproj del solution.
+  build/build_props.props — Propiedades MSBuild comunes para la capa gestionada.
+  Cada .csproj debe declarar su propio <TargetFrameworks> o <TargetFramework>;
+  aquí solo va lo común (configuración, plataformas, output paths).
 -->
 <Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
 
@@ -38,12 +39,6 @@
     <DefineConstants>DEBUG;TRACE</DefineConstants>
     <DebugType>full</DebugType>
     <DebugSymbols>true</DebugSymbols>
-  </PropertyGroup>
-
-  <!-- Dual target net35+net48 (la capa compartida). Los .csproj pueden
-       sobreescribir TargetFrameworks si solo quieren uno (caso de Tests). -->
-  <PropertyGroup Condition=" '$(TargetFrameworks)' == '' And '$(TargetFramework)' == '' ">
-    <TargetFrameworks>net35;net48</TargetFrameworks>
   </PropertyGroup>
 
   <!-- Símbolos condicionales por target -->

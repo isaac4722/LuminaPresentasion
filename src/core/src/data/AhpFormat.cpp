@@ -47,75 +47,71 @@ bool AhpFormat::Cargar(const std::string& ruta, Programa* out,
 
 bool AhpFormat::CargarFromString(const std::string& json_text, Programa* out,
                                   std::string* msg_error) {
-    try {
-        auto j = nlohmann::json::parse(json_text);
-        if (j.value("formato", "") != "ahp") {
-            if (msg_error) *msg_error = "No es un archivo ahp (falta 'formato':'ahp')";
-            return false;
-        }
-        std::uint32_t v = j.value("version", 0);
-        g_version_leida.store(v);
-        if (v > kAhpVersionActual) {
-            if (msg_error) *msg_error = "Versión ahp.v" + std::to_string(v)
-                                      + " no soportada (máxima: v1)";
-            return false;
-        }
-
-        const auto meta = j.value("meta", nlohmann::json::object());
-        out->titulo    = meta.value("titulo", "");
-        out->fecha     = meta.value("fecha", "");
-        out->autor     = meta.value("autor", "");
-        out->tema_raiz = meta.value("tema_raiz", "");
-        out->notas     = meta.value("notas", "");
-
-        out->escenarios.clear();
-        const auto ej_s = j.value("escenarios", nlohmann::json::array());
-        for (const auto& ej : ej_s) {
-                Escenario esc;
-                esc.id     = ej.value("id", "");
-                esc.nombre = ej.value("nombre", "");
-                esc.notas  = ej.value("notas", "");
-                esc.tema   = ej.value("tema", "");
-                if (ej.contains("elementos") && ej["elementos"].is_array()) {
-                    for (const auto& elj : ej["elementos"]) {
-                        Elemento e;
-                        e.id    = elj.value("id", "");
-                        e.tipo  = ParseTipo(elj.value("tipo", ""));
-                        e.titulo= elj.value("titulo", "");
-                        if (elj.contains("lineas")) {
-                            for (const auto& lj : elj["lineas"]) {
-                                LineaTexto l;
-                                l.texto = lj.value("texto", "");
-                                l.marca = lj.value("marca", "");
-                                e.lineas.push_back(l);
-                            }
-                        }
-                        e.acordes          = elj.value("acordes", "");
-                        e.tono_origen      = elj.value("tono_origen", "");
-                        e.tono_actual      = elj.value("tono_actual", "");
-                        e.bpm              = elj.value("bpm", 0);
-                        e.cita             = elj.value("cita", "");
-                        e.biblia           = elj.value("biblia", "");
-                        e.texto_versiculo  = elj.value("texto", "");
-                        e.modo_versiculo   = ParseModo(elj.value("modo", "completo"));
-                        e.ruta             = elj.value("ruta", "");
-                        e.ajuste           = ParseAjuste(elj.value("ajuste", "cubrir"));
-                        e.bucle_video      = elj.value("bucle", false);
-                        e.audio_video      = elj.value("audio", true);
-                        e.sub_lower        = elj.value("sub", "");
-                        e.tema_override    = elj.value("tema_override", "");
-                        e.notas            = elj.value("notas", "");
-                        esc.elementos.push_back(std::move(e));
-                    }
-                }
-                out->escenarios.push_back(std::move(esc));
-            }
-        }
-        return true;
-    } catch (const std::exception& ex) {
-        if (msg_error) *msg_error = std::string("JSON inválido: ") + ex.what();
+    auto j = nlohmann::json::parse(json_text, nullptr, false);
+    if (j.is_discarded() || !j.is_object()) {
+        if (msg_error) *msg_error = "JSON inválido o no es objeto";
         return false;
     }
+    if (j.value("formato", "") != "ahp") {
+        if (msg_error) *msg_error = "No es un archivo ahp (falta 'formato':'ahp')";
+        return false;
+    }
+    std::uint32_t v = j.value("version", 0);
+    g_version_leida.store(v);
+    if (v > kAhpVersionActual) {
+        if (msg_error) *msg_error = "Versión ahp.v" + std::to_string(v)
+                                  + " no soportada (máxima: v1)";
+        return false;
+    }
+
+    const auto meta = j.value("meta", nlohmann::json::object());
+    out->titulo    = meta.value("titulo", "");
+    out->fecha     = meta.value("fecha", "");
+    out->autor     = meta.value("autor", "");
+    out->tema_raiz = meta.value("tema_raiz", "");
+    out->notas     = meta.value("notas", "");
+
+    out->escenarios.clear();
+    const auto escenarios = j.value("escenarios", nlohmann::json::array());
+    for (const auto& ej : escenarios) {
+        Escenario esc;
+        esc.id     = ej.value("id", "");
+        esc.nombre = ej.value("nombre", "");
+        esc.notas  = ej.value("notas", "");
+        esc.tema   = ej.value("tema", "");
+        const auto elementos = ej.value("elementos", nlohmann::json::array());
+        for (const auto& elj : elementos) {
+            Elemento e;
+            e.id    = elj.value("id", "");
+            e.tipo  = ParseTipo(elj.value("tipo", ""));
+            e.titulo= elj.value("titulo", "");
+            const auto lineas = elj.value("lineas", nlohmann::json::array());
+            for (const auto& lj : lineas) {
+                LineaTexto l;
+                l.texto = lj.value("texto", "");
+                l.marca = lj.value("marca", "");
+                e.lineas.push_back(l);
+            }
+            e.acordes          = elj.value("acordes", "");
+            e.tono_origen      = elj.value("tono_origen", "");
+            e.tono_actual      = elj.value("tono_actual", "");
+            e.bpm              = elj.value("bpm", 0);
+            e.cita             = elj.value("cita", "");
+            e.biblia           = elj.value("biblia", "");
+            e.texto_versiculo  = elj.value("texto", "");
+            e.modo_versiculo   = ParseModo(elj.value("modo", "completo"));
+            e.ruta             = elj.value("ruta", "");
+            e.ajuste           = ParseAjuste(elj.value("ajuste", "cubrir"));
+            e.bucle_video      = elj.value("bucle", false);
+            e.audio_video      = elj.value("audio", true);
+            e.sub_lower        = elj.value("sub", "");
+            e.tema_override    = elj.value("tema_override", "");
+            e.notas            = elj.value("notas", "");
+            esc.elementos.push_back(std::move(e));
+        }
+        out->escenarios.push_back(std::move(esc));
+    }
+    return true;
 }
 
 std::string AhpFormat::Serializar(const Programa& p) {
