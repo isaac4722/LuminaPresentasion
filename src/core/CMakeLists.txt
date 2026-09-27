@@ -136,6 +136,7 @@ if(FUSION_BUILD_TESTS)
         ${CMAKE_SOURCE_DIR}/../../tests/native/test_ahp_format.cpp
         ${CMAKE_SOURCE_DIR}/../../tests/native/test_importers.cpp
         ${CMAKE_SOURCE_DIR}/../../tests/native/test_citas.cpp
+        ${CMAKE_SOURCE_DIR}/../../tests/native/test_sql_script.cpp
 
         ${FUSION_SRC_DIR}/Version.cpp
         ${FUSION_SRC_DIR}/data/AhpFormat.cpp
