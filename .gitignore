@@ -1,0 +1,71 @@
+# Build artifacts
+[Bb]uild/
+[Bb]in/
+[Oo]bj/
+[Oo]ut/
+x64/
+x86/
+Debug/
+Release/
+*.user
+*.suo
+*.pdb
+*.ilk
+*.exp
+*.lib
+*.obj
+*.idb
+*.tlog
+*.lastbuildstate
+*.unsuccessfulbuild
+*.cache
+
+# CMake
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+Makefile
+*.cmake
+!CMakeLists.txt
+
+# Qt
+*.qmlc
+*.qmltc
+qrc_*.cpp
+ui_*.h
+moc_*.cpp
+moc_*.h
+
+# .NET
+*.dll.config
+project.lock.json
+artifacts/
+.packages/
+
+# IDE
+.vs/
+.vscode/
+.idea/
+*.swp
+*~
+
+# OS
+Thumbs.db
+.DS_Store
+desktop.ini
+
+# Datos sensibles (nunca al repo)
+data/bibles/*.db
+data/bibles/*.sqlite
+data/bibles/*.fdb
+!data/bibles/.gitkeep
+!data/bibles/README.md
+
+# Instalador .NET offline (descargar aparte, ver installer/net48_offline/README.txt)
+installer/net48_offline/*.exe
+installer/net48_offline/*.cab
+
+# Logs y temporales
+*.log
+logs/
+tmp/

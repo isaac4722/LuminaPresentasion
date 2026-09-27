@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+
+  <Import Project="$(MSBuildThisFileDirectory)..\..\build\build_props.props" />
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <RootNamespace>FusionHP.Managed</RootNamespace>
+    <AssemblyName>FusionHP.Managed</AssemblyName>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ApplicationManifest>App.config</ApplicationManifest>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Reference Include="System" />
+    <Reference Include="System.Core" />
+    <Reference Include="System.Drawing" />
+    <Reference Include="System.Windows.Forms" />
+    <Reference Include="System.Data" />
+    <Reference Include="System.Xml" />
+    <!-- System.Data.SQLite: incluir la DLL nativa x86 y x64 en runtime/. -->
+    <!-- Newtonsoft.Json, NLog, PdfSharp, Ookii.Dialogs, BouncyCastle vía NuGet en producción. -->
+  </ItemGroup>
+
+  <!-- Referencias condicionales por target -->
+  <ItemGroup Condition="'$(TargetFramework)' == 'net48'">
+    <Reference Include="System.Net.Http" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="Program.cs" />
+    <Compile Include="Forms\MainForm.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="Forms\MainForm.Designer.cs">
+      <DependentUpon>MainForm.cs</DependentUpon>
+    </Compile>
+    <Compile Include="Forms\StudioForm.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="Forms\StudioForm.Designer.cs">
+      <DependentUpon>StudioForm.cs</DependentUpon>
+    </Compile>
+    <Compile Include="Forms\PresentForm.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="Forms\PresentForm.Designer.cs">
+      <DependentUpon>PresentForm.cs</DependentUpon>
+    </Compile>
+    <Compile Include="Forms\LibraryForm.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="Forms\LibraryForm.Designer.cs">
+      <DependentUpon>LibraryForm.cs</DependentUpon>
+    </Compile>
+    <Compile Include="Forms\OperatorConsoleForm.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="Forms\OperatorConsoleForm.Designer.cs">
+      <DependentUpon>OperatorConsoleForm.cs</DependentUpon>
+    </Compile>
+    <Compile Include="Forms\BibleQuickForm.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="Forms\BibleQuickForm.Designer.cs">
+      <DependentUpon>BibleQuickForm.cs</DependentUpon>
+    </Compile>
+    <Compile Include="Forms\DiagnosticForm.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="Forms\DiagnosticForm.Designer.cs">
+      <DependentUpon>DiagnosticForm.cs</DependentUpon>
+    </Compile>
+    <Compile Include="Ipc\IpcClient.cs" />
+    <Compile Include="Data\AhpProgram.cs" />
+    <Compile Include="Data\Scenario.cs" />
+    <Compile Include="Data\Element.cs" />
+    <Compile Include="Data\Theme.cs" />
+    <Compile Include="Properties\AssemblyInfo.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="App.config" />
+  </ItemGroup>
+
+  <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
+</Project>

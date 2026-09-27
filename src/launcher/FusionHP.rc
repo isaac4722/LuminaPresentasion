@@ -1,0 +1,9 @@
+// src/launcher/FusionHP.rc — Recursos del launcher (icono + manifiesto)
+#include <windows.h>
+
+// Icono principal (placeholder hasta sustituirlo por data/assets/logo/fusionhp.ico)
+IDI_FUSIONHP ICON "fusionhp.ico"
+
+// Manifiesto para que Windows aplique DPI awareness y Common Controls v6
+// (no es obligatorio, pero mejora la apariencia en Win10/11).
+1 24 "FusionHP.manifest"

@@ -1,0 +1,274 @@
+name: CI FUSION-HP
+
+on:
+  push:
+    branches: [main, develop]
+    tags: ['v*']
+  pull_request:
+    branches: [main, develop]
+
+env:
+  VCPKG_DEFAULT_TRIPLET: x64-windows-static-md
+
+jobs:
+  # ===========================================================================
+  # Job 1: Build dual x86 + x64 del núcleo C++17 (MSVC, CRT estática /MT)
+  # ===========================================================================
+  nucleo:
+    name: Núcleo C++17 dual
+    runs-on: windows-2022
+    strategy:
+      fail-fast: false
+      matrix:
+        arquitectura: [x86, x64]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup MSVC
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: ${{ matrix.arquitectura }}
+
+      - name: Setup CMake
+        uses: lukka/get-cmake@latest
+        with:
+          cmakeVersion: '3.28.x'
+
+      - name: Cache vcpkg
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ github.workspace }}/vcpkg
+            $VCPKG_ROOT
+          key: vcpkg-${{ matrix.arquitectura }}-${{ hashFiles('src/core/CMakeLists.txt') }}
+          restore-keys: |
+            vcpkg-${{ matrix.arquitectura }}-
+
+      - name: Configurar CMake (núcleo)
+        working-directory: src/core
+        run: |
+          cmake -S . -B build-${{ matrix.arquitectura }} `
+            -G "Ninja" `
+            -DCMAKE_BUILD_TYPE=Release `
+            -DCMAKE_SYSTEM_PROCESSOR=${{ matrix.arquitectura }} `
+            -DFUSION_STATIC_CRT=ON `
+            -DFUSION_BUILD_TESTS=ON
+
+      - name: Compilar núcleo
+        working-directory: src/core
+        run: cmake --build build-${{ matrix.arquitectura }} --config Release --parallel
+
+      - name: Tests nativos
+        working-directory: src/core/build-${{ matrix.arquitectura }}
+        run: |
+          .\fusion_tests.exe --reporters=console --no-breaks --no-colors
+
+      - name: Subir artefacto
+        uses: actions/upload-artifact@v4
+        with:
+          name: nucleo-${{ matrix.arquitectura }}
+          path: |
+            src/core/build-${{ matrix.arquitectura }}/bin/*
+          retention-days: 14
+
+  # ===========================================================================
+  # Job 2: Build dual target net35 + net48 de la capa gestionada
+  # ===========================================================================
+  gestionada:
+    name: Capa gestionada C# net35+net48
+    runs-on: windows-2022
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET Framework 3.5
+        run: |
+          # En windows-2022, .NET 3.5 debe habilitarse explícitamente
+          dism /online /enable-feature /featurename:NetFx3 /all /norestart
+          # Instalar reference assemblies 3.5 si no están
+          choco install -y netfx-3.5-devpack --ignore-dependencies || true
+
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Setup NuGet
+        uses: nuget/setup-nuget@v2
+        with:
+          nuget-version: '6.x'
+
+      - name: Restaurar paquetes
+        working-directory: src/managed
+        run: nuget restore FusionHP.Managed.sln
+
+      - name: Build net35
+        working-directory: src/managed
+        run: msbuild FusionHP.Managed.sln /p:Configuration=Release /p:Platform="Any CPU" /p:TargetFramework=net35 /m
+
+      - name: Build net48
+        working-directory: src/managed
+        run: msbuild FusionHP.Managed.sln /p:Configuration=Release /p:Platform="Any CPU" /p:TargetFramework=net48 /m
+
+      - name: Tests gestionados
+        working-directory: src/managed
+        run: |
+          .\FusionHP.Managed.Tests\bin\Release\net48\FusionHP.Managed.Tests.exe
+
+      - name: Subir artefacto
+        uses: actions/upload-artifact@v4
+        with:
+          name: gestionada
+          path: |
+            src/managed/**/bin/Release/**
+          retention-days: 14
+
+  # ===========================================================================
+  # Job 3: Build dual del Qt shell (x86 + x64) con Qt 5.15.2
+  # ===========================================================================
+  qt_shell:
+    name: Qt 5.15.2 shell dual
+    runs-on: windows-2022
+    strategy:
+      fail-fast: false
+      matrix:
+        arquitectura: [x86, x64]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup MSVC
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: ${{ matrix.arquitectura }}
+
+      - name: Instalar Qt 5.15.2
+        run: |
+          pip install aqtinstall
+          if ("${{ matrix.arquitectura }}" -eq "x86") {
+            aqt install-qt windows desktop 5.15.2 win32_msvc2019 -m qtcore qtgui qtwidgets -o C:\Qt
+          } else {
+            aqt install-qt windows desktop 5.15.2 win64_msvc2019_64 -m qtcore qtgui qtwidgets -o C:\Qt
+          }
+
+      - name: Configurar CMake (qt-shell)
+        working-directory: src/qt-shell
+        env:
+          CMAKE_PREFIX_PATH: ${{ matrix.arquitectura == 'x86' && 'C:\Qt\5.15.2\msvc2019' || 'C:\Qt\5.15.2\msvc2019_64' }}
+        run: |
+          cmake -S . -B build-${{ matrix.arquitectura }} -G "Ninja" -DCMAKE_BUILD_TYPE=Release
+
+      - name: Compilar Qt shell
+        working-directory: src/qt-shell
+        run: cmake --build build-${{ matrix.arquitectura }} --parallel
+
+      - name: Subir artefacto
+        uses: actions/upload-artifact@v4
+        with:
+          name: qt-shell-${{ matrix.arquitectura }}
+          path: src/qt-shell/build-${{ matrix.arquitectura }}/*
+          retention-days: 14
+
+  # ===========================================================================
+  # Job 4: Launcher C++17 (x86, sin consola)
+  # ===========================================================================
+  launcher:
+    name: Launcher nativo
+    runs-on: windows-2022
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup MSVC (x86)
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x86
+
+      - name: Setup CMake
+        uses: lukka/get-cmake@latest
+
+      - name: Configurar CMake (launcher)
+        working-directory: src/launcher
+        run: cmake -S . -B build -G "Ninja" -DCMAKE_BUILD_TYPE=Release -DCMAKE_SYSTEM_PROCESSOR=x86
+
+      - name: Compilar launcher
+        working-directory: src/launcher
+        run: cmake --build build --parallel
+
+      - name: Subir artefacto
+        uses: actions/upload-artifact@v4
+        with:
+          name: launcher
+          path: src/launcher/build/bin/*
+          retention-days: 14
+
+  # ===========================================================================
+  # Job 5: Gate de calidad (corre solo si los 4 builds anteriores pasan)
+  # ===========================================================================
+  gate:
+    name: Gate de calidad
+    runs-on: windows-2022
+    needs: [nucleo, gestionada, qt_shell, launcher]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Descargar todos los artefactos
+        uses: actions/download-artifact@v4
+        with:
+          path: build/artifacts
+
+      - name: Verificar restricciones (sin Registro, sin red, sin .cmd/.bat)
+        shell: pwsh
+        run: |
+          .\build\quality_gate.ps1 -FromArtifacts
+
+      - name: Subir reporte del gate
+        uses: actions/upload-artifact@v4
+        with:
+          name: gate-report
+          path: build/artifacts/gate_report.json
+
+  # ===========================================================================
+  # Job 6: Empaquetar release (solo en tag v*)
+  # ===========================================================================
+  pack:
+    name: Empaquetar release
+    runs-on: windows-2022
+    needs: [gate]
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Descargar todos los artefactos
+        uses: actions/download-artifact@v4
+        with:
+          path: build/artifacts
+
+      - name: Inno Setup (x86)
+        run: |
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer\FusionHP.iss /DARCH=x86
+
+      - name: Inno Setup (x64)
+        run: |
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer\FusionHP.iss /DARCH=x64
+
+      - name: Subir instaladores
+        uses: actions/upload-artifact@v4
+        with:
+          name: installers
+          path: |
+            installer/Output/FusionHP-Setup-x86.exe
+            installer/Output/FusionHP-Setup-x64.exe
+
+      - name: Release en GitHub
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            installer/Output/FusionHP-Setup-x86.exe
+            installer/Output/FusionHP-Setup-x64.exe
+          draft: true
+          name: ${{ github.ref_name }}
+          generate_release_notes: true

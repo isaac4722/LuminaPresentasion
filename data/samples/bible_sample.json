@@ -1,0 +1,38 @@
+{
+  "_comentario": "Sample de importación de biblia formato JSON interno de FUSION-HP.",
+  "biblia": {
+    "nombre": "Reina-Valera 1909",
+    "abrev": "RVR1909",
+    "idioma": "es",
+    "derechos": "Dominio público",
+    "fuente": "JSON"
+  },
+  "libros": [
+    {
+      "abrev3": "Gén",
+      "nombre": "Génesis",
+      "capitulos": [
+        {
+          "numero": 1,
+          "versiculos": [
+            { "numero": 1, "texto": "En el principio creó Dios los cielos y la tierra." },
+            { "numero": 2, "texto": "Y la tierra estaba desordenada y vacía, y las tinieblas estaban sobre la faz del abismo, y el Espíritu de Dios se movía sobre la faz de las aguas." },
+            { "numero": 3, "texto": "Y dijo Dios: Sea la luz: y fue la luz." }
+          ]
+        }
+      ]
+    },
+    {
+      "abrev3": "Jua",
+      "nombre": "Juan",
+      "capitulos": [
+        {
+          "numero": 3,
+          "versiculos": [
+            { "numero": 16, "texto": "Porque de tal manera amó Dios al mundo, que ha dado a su Hijo unigénito, para que todo aquel que en él cree no se pierda, mas tenga vida eterna." }
+          ]
+        }
+      ]
+    }
+  ]
+}

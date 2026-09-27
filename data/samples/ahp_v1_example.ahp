@@ -1,0 +1,94 @@
+{
+  "ipc": "fusion",
+  "formato": "ahp",
+  "version": 1,
+  "meta": {
+    "titulo": "Culto Domingo — Ejemplo",
+    "fecha": "2026-09-28",
+    "autor": "Iglesia Ejemplo",
+    "tema_raiz": "DominicalCálido",
+    "notas": "Programa de muestra para verificar el formato ahp.v1"
+  },
+  "recientes": [],
+  "escenarios": [
+    {
+      "id": "esc-001",
+      "nombre": "Bienvenida",
+      "notas": "Anuncio inicial",
+      "tema": "DominicalCálido",
+      "elementos": [
+        {
+          "id": "el-001",
+          "tipo": "texto",
+          "titulo": "Bienvenida",
+          "lineas": [
+            { "texto": "Bienvenidos a la Casa del Señor", "marca": "1" },
+            { "texto": "Hoy es día de adoración", "marca": "2" }
+          ],
+          "tema_override": null,
+          "notas": "Subir volumen al iniciar"
+        },
+        {
+          "id": "el-002",
+          "tipo": "versiculo",
+          "cita": "Salmo 100:4",
+          "biblia": "RVR1909",
+          "texto": "Entrad por sus puertas con acción de gracias, por sus atrios con alabanza; alabadle y bendecid su nombre.",
+          "modo": "completo"
+        },
+        {
+          "id": "el-003",
+          "tipo": "imagen",
+          "ruta": "data/medios/portada.png",
+          "ajuste": "cubrir"
+        }
+      ]
+    },
+    {
+      "id": "esc-002",
+      "nombre": "Alabanza",
+      "notas": "Bloque de cantos",
+      "tema": "DominicalCálido",
+      "elementos": [
+        {
+          "id": "el-004",
+          "tipo": "texto",
+          "titulo": "Canto: Cuán Grande Es Él",
+          "lineas": [
+            { "texto": "Cuán grande es Él, cuán grande es Él", "marca": "1" },
+            { "texto": "Y mi alma cantará: cuán grande es Él", "marca": "2" }
+          ],
+          "acordes": "[G]Cuán grande es Él, [C]cuán grande es [G]Él\n[C]Y mi alma [G]cantará: cuán [D]grande es [G]Él",
+          "tono_origen": "G",
+          "tono_actual": "G",
+          "bpm": 90
+        }
+      ]
+    },
+    {
+      "id": "esc-003",
+      "nombre": "Mensaje",
+      "notas": "Predicación",
+      "tema": "DominicalSereno",
+      "elementos": [
+        {
+          "id": "el-005",
+          "tipo": "lower_third",
+          "titulo": "Pastor Juan Pérez",
+          "sub": "Juan 3:16"
+        },
+        {
+          "id": "el-006",
+          "tipo": "versiculo",
+          "cita": "Juan 3:16",
+          "biblia": "RVR1909",
+          "texto": "Porque de tal manera amó Dios al mundo, que ha dado a su Hijo unigénito, para que todo aquel que en él cree no se pierda, mas tenga vida eterna.",
+          "modo": "completo"
+        }
+      ]
+    }
+  ],
+  "historial_uso": [
+    { "fecha": "2026-09-21T10:00:00-04:00", "operador": "ejemplo" }
+  ]
+}

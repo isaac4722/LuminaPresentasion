@@ -1,0 +1,28 @@
+{
+  "_comentario": "Sample de importación desde Holyrics (canto simple con secciones).",
+  "version": "1.0",
+  "type": "song",
+  "song": {
+    "title": "Cuán Grande Es Él",
+    "author": "Carl Boberg (trad.)",
+    "key": "G",
+    "bpm": 90,
+    "slides": [
+      {
+        "name": "Verso 1",
+        "type": "verse",
+        "text": "Señor mi Dios, al contemplar los cielos\nel firmamento y las estrellas mil\nal oír tu voz en los rayos luz\ntu poder en la creación veloz"
+      },
+      {
+        "name": "Coro",
+        "type": "chorus",
+        "text": "Cuán grande es Él, cuán grande es Él\nY mi alma cantará: cuán grande es Él"
+      },
+      {
+        "name": "Verso 2",
+        "type": "verse",
+        "text": "Al recorrer los bosques y los prados\ny escuchar el canto de las aves mil\nal mirar tu haz en la creación\nmi alma canta al ver tu bendición"
+      }
+    ]
+  }
+}

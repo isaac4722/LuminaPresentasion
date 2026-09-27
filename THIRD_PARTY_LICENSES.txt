@@ -1,0 +1,60 @@
+THIRD-PARTY LICENSES — FUSION-HP
+================================
+
+Este producto incluye librerías de terceros. A continuación se listan las
+librerías y sus licencias. Los textos completos de cada licencia deben
+incluirse en el pack distribuido bajo `licenses/`.
+
+Núcleo (C++17)
+--------------
+
+| Librería        | Versión    | Licencia     | Origen                                    |
+|-----------------|------------|--------------|-------------------------------------------|
+| wil             | reciente   | MIT          | github.com/microsoft/wil                  |
+| spdlog          | 1.x        | MIT          | github.com/gabime/spdlog                  |
+| doctest         | 2.x        | MIT          | github.com/doctest/doctest                |
+| nlohmann/json    | 3.x        | MIT          | github.com/nlohmann/json                  |
+| SQLite          | 3.x (amalg)| Public Domain| sqlite.org                                |
+
+Capa gestionada (C# .NET Framework)
+-----------------------------------
+
+| Librería                   | Versión | Licencia   | Notas                          |
+|----------------------------|---------|------------|--------------------------------|
+| Newtonsoft.Json            | 13.x    | MIT        |                                |
+| NLog                       | 5.x     | BSD-3      |                                |
+| PdfSharp                   | 6.x     | MIT        |                                |
+| System.Data.SQLite         | 1.x     | Public Domain|                              |
+| Ookii.Dialogs             | 1.x     | BSD-3      |                                |
+| BouncyCastle.Cryptography  | 1.x     | MIT        | Para importación e-Sword Twofish |
+| DocumentFormat.OpenXml     | 2.x     | MIT        | Solo en target net48          |
+
+Qt shell
+--------
+
+| Librería | Versión | Licencia                       | Origen                  |
+|----------|---------|--------------------------------|-------------------------|
+| Qt       | 5.15.2  | LGPL v3 (enlace dinámico)      | qt.io                   |
+
+DLL oficiales de Qt 5.15.2 sin modificar, distribuidas bajo LGPL v3. El código
+fuente de Qt está disponible en qt.io; las modificaciones al mismo, si las
+hubiera, deben publicarse bajo LGPL v3.
+
+Fuentes
+-------
+
+| Fuente              | Licencia                                  |
+|---------------------|-------------------------------------------|
+| Outfit              | OFL 1.1                                   |
+| Cormorant Garamond  | OFL 1.1                                   |
+| Libre Baskerville   | OFL 1.1                                   |
+
+Iconos
+------
+
+| Set    | Licencia                                   |
+|--------|--------------------------------------------|
+| Tabler | MIT                                        |
+
+El pack portable y el instalador deben incluir los textos completos de todas
+estas licencias en la carpeta `licenses/` del producto final.
