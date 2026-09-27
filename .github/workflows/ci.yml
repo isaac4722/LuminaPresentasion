@@ -78,7 +78,7 @@ jobs:
   # Job 2: Build dual target net35 + net48 de la capa gestionada
   # ===========================================================================
   gestionada:
-    name: Capa gestionada C# net35+net48
+    name: Capa gestionada C# net48
     runs-on: windows-2022
     steps:
       - name: Checkout
@@ -116,10 +116,8 @@ jobs:
         working-directory: src/managed
         run: nuget restore FusionHP.Managed.sln
 
-      - name: Build dual (net35 + net48) con SDK-style csproj
+      - name: Build net48 (SDK-style + WindowsDesktop SDK)
         working-directory: src/managed
-        env:
-          FrameworkPathOverride: C:\Windows\Microsoft.NET\Framework\v3.5
         run: msbuild FusionHP.Managed.sln /p:Configuration=Release /p:Platform="Any CPU" /m /v:minimal
 
       - name: Tests gestionados

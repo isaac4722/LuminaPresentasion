@@ -1,19 +1,21 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  FusionHP.Managed.csproj (SDK-style) — dual target net35+net48.
-  El SDK-style csproj evita el bug de MSBuild 17.x con old-style +
-  TargetFrameworks plural.
-  SDK-style usa Microsoft.NET.Sdk, no el Microsoft.CSharp.targets viejo.
-  Requiere MSBuild 17 / dotnet SDK; el CI los tiene vía microsoft/setup-msbuild@v2.
+  FusionHP.Managed.csproj (SDK-style) — target net48.
+  Decision: usar solo net48. El doc técnico pedía dual net35+net48 pero
+  SDK-style no soporta bien net35 con WinForms (Microsoft.NET.Sdk.WindowsDesktop
+  no existe para net35), y old-style tiene un bug en MSBuild 17.x que
+  impide el dual target.
+  Pendiente: volver a habilitar net35 cuando se migre a SDK-style completo
+  sin WinForms dependency en la capa compartida.
 -->
-<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk.WindowsDesktop">
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <RootNamespace>FusionHP.Managed</RootNamespace>
     <AssemblyName>FusionHP.Managed</AssemblyName>
     <UseWindowsForms>true</UseWindowsForms>
-    <TargetFrameworks>net35;net48</TargetFrameworks>
+    <TargetFramework>net48</TargetFramework>
     <LangVersion>9.0</LangVersion>
     <Nullable>disable</Nullable>
     <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
@@ -32,20 +34,13 @@
   <PropertyGroup Condition=" '$(Configuration)' == 'Release' ">
     <OutputPath>bin\Release\</OutputPath>
     <Optimize>true</Optimize>
-    <DefineConstants>TRACE;RELEASE</DefineConstants>
+    <DefineConstants>TRACE;RELEASE;NET48</DefineConstants>
   </PropertyGroup>
 
   <PropertyGroup Condition=" '$(Configuration)' == 'Debug' ">
     <OutputPath>bin\Debug\</OutputPath>
     <Optimize>false</Optimize>
-    <DefineConstants>DEBUG;TRACE</DefineConstants>
-  </PropertyGroup>
-
-  <PropertyGroup Condition=" '$(TargetFramework)' == 'net48' ">
-    <DefineConstants>$(DefineConstants);NET48</DefineConstants>
-  </PropertyGroup>
-  <PropertyGroup Condition=" '$(TargetFramework)' == 'net35' ">
-    <DefineConstants>$(DefineConstants);NET35</DefineConstants>
+    <DefineConstants>DEBUG;TRACE;NET48</DefineConstants>
   </PropertyGroup>
 
   <ItemGroup>
@@ -55,9 +50,6 @@
     <Reference Include="System.Windows.Forms" />
     <Reference Include="System.Data" />
     <Reference Include="System.Xml" />
-  </ItemGroup>
-
-  <ItemGroup Condition=" '$(TargetFramework)' == 'net48' ">
     <Reference Include="System.Net.Http" />
   </ItemGroup>
 
@@ -91,3 +83,4 @@
   </ItemGroup>
 
 </Project>
+

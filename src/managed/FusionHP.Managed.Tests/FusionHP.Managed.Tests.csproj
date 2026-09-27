@@ -9,7 +9,7 @@
     <OutputType>Exe</OutputType>
     <RootNamespace>FusionHP.Managed.Tests</RootNamespace>
     <AssemblyName>FusionHP.Managed.Tests</AssemblyName>
-    <TargetFrameworks>net48</TargetFrameworks>
+    <TargetFramework>net48</TargetFramework>
     <LangVersion>9.0</LangVersion>
     <Nullable>disable</Nullable>
     <Platforms>AnyCPU</Platforms>
