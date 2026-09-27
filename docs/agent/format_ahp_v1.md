@@ -138,6 +138,14 @@ Proyecta un archivo PPTX original. Modos: `com` (con PowerPoint) o
 | `ruta`   | string                | sí        |                             |
 | `modo`   | `"com"` / `"directo"` | sí        |                             |
 
+Notas de compatibilidad: si `modo` falta, el parser asume `"com"`
+(archivos antiguos); un valor no reconocido se lee como inválido y
+`Validar()` lo rechaza con error explícito. Las macros de un `.pptm`
+nunca se ejecutan. La planificación de la proyección vive en
+`fusion::core::PlanPptx` y la de las exportaciones (PPTX/PDF/1080p) en
+`fusion::core::PlanExport` — ambas portable, con tests en
+`tests/native/test_planes.cpp`.
+
 ## Temas y herencia
 
 La herencia de temas es de **4 niveles**:
