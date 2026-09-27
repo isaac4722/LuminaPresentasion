@@ -26,6 +26,8 @@
          desactivamos la inclusión automática para evitar duplicados. -->
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
     <EnableDefaultItems>false</EnableDefaultItems>
+    <!-- SDK-style genera AssemblyInfo.cs automáticamente. -->
+    <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
   </PropertyGroup>
 
   <PropertyGroup Condition=" '$(Configuration)' == 'Release' ">
@@ -81,7 +83,6 @@
     <Compile Include="Data\Scenario.cs" />
     <Compile Include="Data\Element.cs" />
     <Compile Include="Data\Theme.cs" />
-    <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
 
   <ItemGroup>
