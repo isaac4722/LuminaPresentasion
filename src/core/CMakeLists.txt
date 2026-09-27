@@ -6,7 +6,7 @@ cmake_minimum_required(VERSION 3.20)
 project(FusionCore
     VERSION 1.0.0
     DESCRIPTION "Núcleo nativo de FUSION-HP"
-    LANGUAGES CXX)
+    LANGUAGES C CXX)
 
 # ---------------------------------------------------------------------------
 # Opciones
@@ -52,6 +52,8 @@ target_include_directories(fusion_third_party PUBLIC
     ${FUSION_THIRD_PARTY}
     ${FUSION_THIRD_PARTY}/sqlite
 )
+# Forzar detección de lenguaje C para el target (sqlite3.c es C, no C++)
+set_target_properties(fusion_third_party PROPERTIES LINKER_LANGUAGE C)
 if(MSVC)
     target_compile_options(fusion_third_party PRIVATE
         /W0
@@ -101,17 +103,30 @@ target_link_libraries(FusionCore PRIVATE
     gdiplus
     shlwapi
     user32 gdi32 advapi32
-    ${FUSION_THIRD_PARTY}/spdlog/include
+# spdlog se incluye como submodule cuando se necesite; por ahora el núcleo
+# usa OutputDebugString + NLog en la capa gestionada.
 )
 
 # ---------------------------------------------------------------------------
 # Tests nativos (doctest)
 # ---------------------------------------------------------------------------
+# Compila los .cpp del núcleo necesarios para los tests (sin WinMain).
 if(FUSION_BUILD_TESTS)
     add_executable(fusion_tests
         ${CMAKE_SOURCE_DIR}/../../tests/native/main.cpp
         ${CMAKE_SOURCE_DIR}/../../tests/native/test_ahp_format.cpp
         ${CMAKE_SOURCE_DIR}/../../tests/native/test_importers.cpp
+
+        ${FUSION_SRC_DIR}/Version.cpp
+        ${FUSION_SRC_DIR}/data/AhpFormat.cpp
+        ${FUSION_SRC_DIR}/data/SongDatabase.cpp
+        ${FUSION_SRC_DIR}/data/BibleDatabase.cpp
+
+        ${FUSION_SRC_DIR}/importers/HolyricsJson.cpp
+        ${FUSION_SRC_DIR}/importers/ZefaniaXml.cpp
+        ${FUSION_SRC_DIR}/importers/ESwordBib.cpp
+        ${FUSION_SRC_DIR}/importers/JsonBible.cpp
+        ${FUSION_SRC_DIR}/importers/TsvBible.cpp
     )
     target_include_directories(fusion_tests PRIVATE
         ${FUSION_INCLUDE_DIR}
@@ -122,6 +137,10 @@ if(FUSION_BUILD_TESTS)
     )
     if(MSVC)
         target_compile_options(fusion_tests PRIVATE /W0)
+        target_compile_definitions(fusion_tests PRIVATE
+            WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE
+            _WIN32_WINNT=0x0601 NTDDI_VERSION=0x06010000
+        )
     endif()
 endif()
 

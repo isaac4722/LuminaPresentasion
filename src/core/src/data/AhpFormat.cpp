@@ -61,7 +61,7 @@ bool AhpFormat::CargarFromString(const std::string& json_text, Programa* out,
             return false;
         }
 
-        const auto& meta = j.value("meta", nlohmann::json::object());
+        const auto meta = j.value("meta", nlohmann::json::object());
         out->titulo    = meta.value("titulo", "");
         out->fecha     = meta.value("fecha", "");
         out->autor     = meta.value("autor", "");
@@ -69,8 +69,8 @@ bool AhpFormat::CargarFromString(const std::string& json_text, Programa* out,
         out->notas     = meta.value("notas", "");
 
         out->escenarios.clear();
-        if (j.contains("escenarios") && j["escenarios"].is_array()) {
-            for (const auto& ej : j["escenarios"]) {
+        const auto ej_s = j.value("escenarios", nlohmann::json::array());
+        for (const auto& ej : ej_s) {
                 Escenario esc;
                 esc.id     = ej.value("id", "");
                 esc.nombre = ej.value("nombre", "");

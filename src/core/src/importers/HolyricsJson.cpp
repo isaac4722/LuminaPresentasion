@@ -20,7 +20,7 @@ int HolyricsJson::Importar(SongDatabase& db, const std::string& ruta_json) {
     if (j.is_discarded()) return 0;
 
     // El sample tiene { "song": { "title":..., "slides":[...] } }
-    auto song = j.value("song", nlohmann::json::object());
+    const auto song = j.value("song", nlohmann::json::object());
     std::string titulo = song.value("title", "");
     std::string autor  = song.value("author", "");
     std::string tono   = song.value("key", "");

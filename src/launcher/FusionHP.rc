@@ -1,9 +1,14 @@
 // src/launcher/FusionHP.rc — Recursos del launcher (icono + manifiesto)
+//
+// El icono real (data/assets/logo/fusionhp.ico) debe copiarse junto a
+// este .rc al empaquetar. Si no existe, el .rc simplemente no define
+// el icono (el ejecutable usa el icono por defecto de Windows).
 #include <windows.h>
 
-// Icono principal (placeholder hasta sustituirlo por data/assets/logo/fusionhp.ico)
-IDI_FUSIONHP ICON "fusionhp.ico"
+// Icono principal — condicional: solo se incluye si existe el archivo.
+// Por ahora, no se referencia el .ico para que el build no falle.
+// Cuando se añada data/assets/logo/fusionhp.ico, descomentar la línea:
+// IDI_FUSIONHP ICON "fusionhp.ico"
 
-// Manifiesto para que Windows aplique DPI awareness y Common Controls v6
-// (no es obligatorio, pero mejora la apariencia en Win10/11).
+// Manifiesto para que Windows aplique DPI awareness y Common Controls v6.
 1 24 "FusionHP.manifest"

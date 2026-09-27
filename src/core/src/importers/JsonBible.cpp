@@ -22,7 +22,7 @@ int JsonBible::Importar(BibleDatabase& db, const std::string& ruta_json) {
     int n = 0;
     // Estructura esperada (ver data/samples/bible_sample.json):
     // { biblia: {...}, libros: [ { abrev3, nombre, capitulos: [ { numero, versiculos: [...] } ] } ] }
-    const auto& libros = j.value("libros", nlohmann::json::array());
+    const auto libros = j.value("libros", nlohmann::json::array());
     for (const auto& lj : libros) {
         // TODO(P0): buscar libro por abrev3, crear capítulo, insertar versículos.
         for (const auto& cj : lj.value("capitulos", nlohmann::json::array())) {
