@@ -29,6 +29,24 @@ ModoVersiculo ParseModo(const std::string& s) {
     return s == "tercio" ? ModoVersiculo::Tercio : ModoVersiculo::Completo;
 }
 
+ModoPptx ParseModoPptx(const std::string& s) {
+    if (s == "com")     return ModoPptx::Com;
+    if (s == "directo") return ModoPptx::Directo;
+    return ModoPptx::Desconocido;
+}
+
+const char* ModoPptxATexto(ModoPptx m) {
+    return m == ModoPptx::Directo ? "directo" : "com";
+}
+
+const char* AjusteATexto(AjusteImagen a) {
+    switch (a) {
+        case AjusteImagen::Contener: return "contener";
+        case AjusteImagen::Estirar:  return "estirar";
+        default:                     return "cubrir";
+    }
+}
+
 AjusteImagen ParseAjuste(const std::string& s) {
     if (s == "contener")  return AjusteImagen::Contener;
     if (s == "estirar")   return AjusteImagen::Estirar;
@@ -99,7 +117,20 @@ bool AhpFormat::CargarFromString(const std::string& json_text, Programa* out,
             e.cita             = elj.value("cita", "");
             e.biblia           = elj.value("biblia", "");
             e.texto_versiculo  = elj.value("texto", "");
-            e.modo_versiculo   = ParseModo(elj.value("modo", "completo"));
+            // "modo" es contextual al tipo: completo/tercio para
+            // versiculo, com/directo para pptx (format_ahp_v1.md).
+            // Falta → valores por defecto (tolerancia con archivos
+            // antiguos); valor inválido → Desconocido (Validar lo
+            // rechaza con error explícito).
+            const std::string modo_json = elj.value("modo", "");
+            if (e.tipo == TipoElemento::Pptx) {
+                e.modo_pptx = modo_json.empty() ? ModoPptx::Com
+                                                : ParseModoPptx(modo_json);
+            } else if (e.tipo == TipoElemento::Versiculo) {
+                e.modo_versiculo = modo_json.empty()
+                                       ? ModoVersiculo::Completo
+                                       : ParseModo(modo_json);
+            }
             e.ruta             = elj.value("ruta", "");
             e.ajuste           = ParseAjuste(elj.value("ajuste", "cubrir"));
             e.bucle_video      = elj.value("bucle", false);
@@ -157,7 +188,20 @@ std::string AhpFormat::Serializar(const Programa& p) {
             if (!el.cita.empty())        elj["cita"]       = el.cita;
             if (!el.biblia.empty())      elj["biblia"]      = el.biblia;
             if (!el.texto_versiculo.empty()) elj["texto"]   = el.texto_versiculo;
+            if (el.tipo == TipoElemento::Pptx) {
+                elj["modo"] = ModoPptxATexto(el.modo_pptx);
+            } else if (el.tipo == TipoElemento::Versiculo) {
+                elj["modo"] = el.modo_versiculo == ModoVersiculo::Tercio
+                                  ? "tercio" : "completo";
+            }
             if (!el.ruta.empty())       elj["ruta"]        = el.ruta;
+            if (el.tipo == TipoElemento::Imagen) {
+                elj["ajuste"] = AjusteATexto(el.ajuste);
+            }
+            if (el.tipo == TipoElemento::Video) {
+                elj["bucle"] = el.bucle_video;
+                elj["audio"] = el.audio_video;
+            }
             if (!el.sub_lower.empty())   elj["sub"]        = el.sub_lower;
             if (!el.tema_override.empty()) elj["tema_override"] = el.tema_override;
             if (!el.notas.empty())       elj["notas"]       = el.notas;
@@ -192,10 +236,28 @@ bool AhpFormat::Validar(const Programa& p, std::string* msg_error) {
             return false;
         }
     }
-    // IDs únicos de elementos dentro de cada escenario
+    // IDs únicos de elementos dentro de cada escenario + tipos/modos válidos
     for (const auto& e : p.escenarios) {
         std::vector<std::string> el_ids;
-        for (const auto& el : e.elementos) el_ids.push_back(el.id);
+        for (const auto& el : e.elementos) {
+            el_ids.push_back(el.id);
+            if (el.tipo == TipoElemento::Desconocido) {
+                if (msg_error) {
+                    *msg_error = "Elemento con tipo desconocido en " +
+                                 e.nombre + ": " + el.id;
+                }
+                return false;
+            }
+            if (el.tipo == TipoElemento::Pptx &&
+                el.modo_pptx == ModoPptx::Desconocido) {
+                if (msg_error) {
+                    *msg_error = "Elemento pptx con modo inválido en " +
+                                 e.nombre + ": " + el.id +
+                                 " (use \"com\" o \"directo\")";
+                }
+                return false;
+            }
+        }
         std::sort(el_ids.begin(), el_ids.end());
         for (size_t i = 1; i < el_ids.size(); ++i) {
             if (el_ids[i] == el_ids[i-1] && !el_ids[i].empty()) {

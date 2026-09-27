@@ -32,6 +32,15 @@ enum class ModoVersiculo {
     Tercio,           // lower third
 };
 
+// Modo de proyección de un elemento pptx (format_ahp_v1.md):
+// "com" (con PowerPoint, archivo original) o "directo" (sin PowerPoint,
+// render propio). Desconocido = valor inválido que Validar() rechaza.
+enum class ModoPptx {
+    Com,
+    Directo,
+    Desconocido,
+};
+
 struct LineaTexto {
     std::string texto;
     std::string marca;          // etiqueta de sincronización, opcional
@@ -50,6 +59,7 @@ struct Elemento {
     std::string biblia;
     std::string texto_versiculo;
     ModoVersiculo modo_versiculo = ModoVersiculo::Completo;
+    ModoPptx      modo_pptx      = ModoPptx::Com;
     std::string ruta;            // imagen/video/pptx
     AjusteImagen ajuste = AjusteImagen::Cubrir;
     bool         bucle_video = false;
