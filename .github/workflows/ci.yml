@@ -116,25 +116,11 @@ jobs:
         working-directory: src/managed
         run: nuget restore FusionHP.Managed.sln
 
-      - name: Build net35 (gestionada)
+      - name: Build dual (net35 + net48) con SDK-style csproj
         working-directory: src/managed
         env:
           FrameworkPathOverride: C:\Windows\Microsoft.NET\Framework\v3.5
-        run: msbuild FusionHP.Managed\FusionHP.Managed.csproj /p:Configuration=Release /p:TargetFramework=net35 /m /v:minimal
-
-      - name: Build net35 (tests)
-        working-directory: src/managed
-        env:
-          FrameworkPathOverride: C:\Windows\Microsoft.NET\Framework\v3.5
-        run: msbuild FusionHP.Managed.Tests\FusionHP.Managed.Tests.csproj /p:Configuration=Release /p:TargetFramework=net35 /m /v:minimal
-
-      - name: Build net48 (gestionada)
-        working-directory: src/managed
-        run: msbuild FusionHP.Managed\FusionHP.Managed.csproj /p:Configuration=Release /p:TargetFramework=net48 /m /v:minimal
-
-      - name: Build net48 (tests)
-        working-directory: src/managed
-        run: msbuild FusionHP.Managed.Tests\FusionHP.Managed.Tests.csproj /p:Configuration=Release /p:TargetFramework=net48 /m /v:minimal
+        run: msbuild FusionHP.Managed.sln /p:Configuration=Release /p:Platform="Any CPU" /m /v:minimal
 
       - name: Tests gestionados
         working-directory: src/managed
