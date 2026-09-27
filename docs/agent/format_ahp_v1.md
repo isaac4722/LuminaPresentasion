@@ -151,7 +151,10 @@ Cada nivel puede sobreescribir selectivamente propiedades del anterior. El
 **informe de fidelidad** (P2) enumera qué propiedades fueron sobreescritas en
 cada nivel, para que el operador entienda qué se le aplicó al elemento final.
 
-Ver `docs/agent/themes.md` (pendiente) para el esquema completo de un tema.
+Ver `docs/agent/themes.md` para el esquema completo de un tema y el
+algoritmo de resolución (implementado en
+`src/core/src/core/HerenciaTemas.cpp`, tests en
+`tests/native/test_herencia.cpp`).
 
 ## Recientes
 
