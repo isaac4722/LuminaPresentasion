@@ -22,6 +22,10 @@
     <Deterministic>true</Deterministic>
     <Platforms>AnyCPU</Platforms>
     <PlatformTarget>AnyCPU</PlatformTarget>
+    <!-- SDK-style autoincluye *.cs; como ya los tenemos explícitos,
+         desactivamos la inclusión automática para evitar duplicados. -->
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <EnableDefaultItems>false</EnableDefaultItems>
   </PropertyGroup>
 
   <PropertyGroup Condition=" '$(Configuration)' == 'Release' ">
