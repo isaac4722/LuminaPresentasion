@@ -1,5 +1,4 @@
-# Build artifacts
-[Bb]uild/
+# Build artifacts (outputs, no los scripts de build que viven en build/)
 [Bb]in/
 [Oo]bj/
 [Oo]ut/
@@ -20,7 +19,17 @@ Release/
 *.unsuccessfulbuild
 *.cache
 
-# CMake
+# Directorios de salida de CMake/MSBuild (pero NO el directorio build/ del repo
+# que contiene build.ps1, build_props.props y quality_gate.ps1)
+build-*/
+[Bb]uild/[Cc][Mm]ake[Ff]iles/
+[Bb]uild/[Cc][Mm]akeCache.txt
+[Bb]uild/[Bb]in/
+[Bb]uild/[Ll]ib/
+[Bb]uild/[Aa]rtifacts/
+[Bb]uild/[Oo]utput/
+
+# CMake (en cualquier subcarpeta)
 CMakeFiles/
 CMakeCache.txt
 cmake_install.cmake

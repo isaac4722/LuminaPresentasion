@@ -78,6 +78,9 @@ add_executable(FusionCore WIN32
     ${FUSION_SRC_DIR}/core/IpcServer.cpp
     ${FUSION_SRC_DIR}/core/ProjectionWindow.cpp
     ${FUSION_SRC_DIR}/core/VideoPlayer.cpp
+    ${FUSION_SRC_DIR}/core/StageView.cpp
+    ${FUSION_SRC_DIR}/core/TriggerEngine.cpp
+    ${FUSION_SRC_DIR}/core/Diagnostic.cpp
 
     ${FUSION_SRC_DIR}/data/SongDatabase.cpp
     ${FUSION_SRC_DIR}/data/BibleDatabase.cpp

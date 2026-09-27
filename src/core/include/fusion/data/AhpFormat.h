@@ -5,6 +5,8 @@
 #pragma once
 
 #include "fusion/Version.h"
+// AjusteImagen se define en fusion/core/Renderer.h y se reutiliza aquí.
+#include "fusion/core/Renderer.h"
 
 #include <string>
 #include <vector>
@@ -28,13 +30,6 @@ enum class TipoElemento {
 enum class ModoVersiculo {
     Completo,
     Tercio,           // lower third
-};
-
-// Modo de ajuste de imagen.
-enum class AjusteImagen {
-    Cubrir,
-    Contener,
-    Estirar,
 };
 
 struct LineaTexto {

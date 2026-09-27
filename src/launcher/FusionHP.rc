@@ -1,14 +1,12 @@
-// src/launcher/FusionHP.rc — Recursos del launcher (icono + manifiesto)
+// src/launcher/FusionHP.rc — Recursos del launcher
 //
-// El icono real (data/assets/logo/fusionhp.ico) debe copiarse junto a
-// este .rc al empaquetar. Si no existe, el .rc simplemente no define
-// el icono (el ejecutable usa el icono por defecto de Windows).
+// El manifiesto (DPI awareness + Common Controls v6) se aplica vía
+// CMake/MSBuild (set_target_properties WIN32_EXECUTABLE TRUE), por lo
+// que NO se incluye aquí para evitar "duplicate resource type:MANIFEST".
+//
+// Cuando se añada data/assets/logo/fusionhp.ico, descomentar la línea
+// IDI_FUSIONHP ICON "fusionhp.ico". Por ahora no se referencia para
+// que el build no falle.
 #include <windows.h>
 
-// Icono principal — condicional: solo se incluye si existe el archivo.
-// Por ahora, no se referencia el .ico para que el build no falle.
-// Cuando se añada data/assets/logo/fusionhp.ico, descomentar la línea:
 // IDI_FUSIONHP ICON "fusionhp.ico"
-
-// Manifiesto para que Windows aplique DPI awareness y Common Controls v6.
-1 24 "FusionHP.manifest"

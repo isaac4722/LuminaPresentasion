@@ -147,9 +147,9 @@ jobs:
         run: |
           pip install aqtinstall
           if ("${{ matrix.arquitectura }}" -eq "x86") {
-            aqt install-qt windows desktop 5.15.2 win32_msvc2019 -m qtcore qtgui qtwidgets -O C:\Qt
+            aqt install-qt windows desktop 5.15.2 win32_msvc2019 -O C:\Qt
           } else {
-            aqt install-qt windows desktop 5.15.2 win64_msvc2019_64 -m qtcore qtgui qtwidgets -O C:\Qt
+            aqt install-qt windows desktop 5.15.2 win64_msvc2019_64 -O C:\Qt
           }
 
       - name: Configurar CMake (qt-shell)
