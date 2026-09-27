@@ -304,3 +304,55 @@ Stage Summary:
 - Siguiente pieza: rasterizador del render directo en el shell
   Windows (DiapositivaPptx + tema → Direct2D), y luego exportadores
   reales (OpenXML/PdfSharp/D2D) conectando PlanExport.
+
+---
+## Sesión 2026-09-28 (VI) — auditoría contra el doc técnico v1.1 e importador PPTX (9.2)
+
+Work Log:
+- Descargado de nuevo el doc técnico v1.1 (el enlace anterior había
+  expirado). Auditoría punto por punto de lo implementado contra el
+  doc real:
+  * El doc 9.2 es el IMPORTADOR PPTX → ahp.v1 (diapositiva →
+    Escenario, caja de texto → Elemento Texto, imagen incrustada →
+    Elemento con extracción a media/, fondo del diseño → fondo del
+    Escenario, informe de importación), y sitúa los
+    importadores/exportadores en la capa C#. Esa pieza NO estaba.
+  * La proyección por archivo original ("com"/"directo") NO está en
+    el doc, pero SÍ en AGENT.md (autoridad máxima, tabla P1: "PPTX
+    original (COM o directo)"): se conserva como extensión del
+    propietario; PlanPptx/LectorPptx siguen siendo la base del modo
+    "directo" del núcleo.
+  * 5.4 del doc: Tema → Plantilla de Escenario → Escenario →
+    Elemento. La herencia implementada usa raíz → plantilla
+    (escenario.tema) → elemento → runtime. Desviación de nombrado
+    documentada; el nivel "Escenario" propio del doc queda pendiente
+    como capa adicional.
+- feat(ahp) 2ea477b: campos destino del importador con ida y vuelta
+  simétrica: Escenario.fondo (#RRGGBB/#RGB, vacío = hereda; Validar
+  rechaza colores inválidos a nivel de escenario) y
+  Elemento.tam_fuente_pt (sz/100 → pt del doc 9.2.3, 0 = hereda).
+  Tests de redondeo y no-serialización.
+- feat(interop) bc8f8e6 + fixes ed126bb/637c378/9c11fa2/cc81d72:
+  ImportadorPptx en la capa C# (net48): recorrido OPC normativo,
+  XML seguro (DtdProcessing=Prohibit + XmlResolver=null: XXE y
+  billion laughs mitigados, DTD → rechazo), .pptm sin macros con
+  aviso, tolerancia a namespaces por LocalName, mapeo completo con
+  informe (avisos + omitidos), imagen incrustada extraída a media/
+  (MediaExtraida), tablas → texto de celdas, fondo
+  slide→layout→master.
+  Bugs corregidos en CI: CS0103 (informe/inf), base64 del paquete de
+  prueba concatenado con + (CS1001), programa nulo tras error, y el
+  orden de runs en el DFS (empuje invertido también en la raíz).
+- Paquete de prueba ampliado (fondo sólido en slide2, PNG 1x1
+  embebido en slide3) regenerado para C++ y C# desde el mismo
+  script; generadores incluidos en scripts/ del repo.
+- Docs: docs/agent/import_pptx.md (mapeo, seguridad, decisiones v1)
+  y format_ahp_v1.md (fondo, tam_fuente_pt).
+
+Stage Summary:
+- Verificación local: 79 test cases / 444 aserciones verde (gcc-14).
+- CI VERDE 7/7 en punta de main (cc81d72, run 36360232614); el job
+  net48 compila el importador y ejecuta 14 tests gestionados.
+- Pendiente siguiente sesión: capa "Escenario" de la herencia (doc
+  5.4) como nivel adicional; exportadores reales (9.3) conectando
+  PlanExport; rasterizador del modo directo (AGENT.md P1).
