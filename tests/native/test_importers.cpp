@@ -223,3 +223,86 @@ TEST_CASE("ZefaniaXml.Importar archivo sin XMLBIBLE devuelve 0") {
     std::remove(ruta);
     CHECK(n == 0);
 }
+
+// ---------------------------------------------------------------------------
+// Holyrics JSON — canto único, lista y deduplicación
+// ---------------------------------------------------------------------------
+TEST_CASE("HolyricsJson.Importar canto único con slides") {
+    SongDatabase db;
+    REQUIRE(db.Abrir(":memory:"));
+
+    const char* ruta = "tmp_holyrics_single.json";
+    {
+        std::ofstream f(ruta, std::ios::binary);
+        f << "{\n"
+          << "  \"song\": {\n"
+          << "    \"title\": \"Cuán Grande Es Él\",\n"
+          << "    \"author\": \"Carl Boberg (trad.)\",\n"
+          << "    \"key\": \"G\",\n"
+          << "    \"bpm\": 90,\n"
+          << "    \"slides\": [\n"
+          << "      {\"name\":\"Verso 1\",\"type\":\"verse\","
+          << "\"text\":\"Señor mi Dios, al contemplar los cielos\\nel firmamento y las estrellas mil\"},\n"
+          << "      {\"name\":\"Coro\",\"type\":\"chorus\","
+          << "\"text\":\"Cuán grande es Él, cuán grande es Él\\nY mi alma cantará\"}\n"
+          << "    ]\n"
+          << "  }\n"
+          << "}\n";
+    }
+    const int n = HolyricsJson::Importar(db, ruta);
+    std::remove(ruta);
+    REQUIRE(n == 1);
+
+    std::vector<Canto> lista = db.ListarTodos();
+    REQUIRE(lista.size() == 1);
+    CHECK(lista[0].titulo == "Cuán Grande Es Él");
+    CHECK(lista[0].tono_origen == "G");
+    CHECK(lista[0].bpm == 90);
+
+    CantoDetalle det;
+    REQUIRE(db.Obtener(lista[0].id, &det));
+    REQUIRE(det.secciones.size() == 2);
+    CHECK(det.secciones[0].tipo == "verso");
+    CHECK(det.secciones[0].etiqueta == "Verso 1");
+    REQUIRE(det.secciones[0].lineas.size() == 2);
+    CHECK(det.secciones[0].lineas[0].find("Señor mi Dios") != std::string::npos);
+    CHECK(det.secciones[1].tipo == "coro");
+    CHECK(det.secciones[1].lineas.size() == 2);
+}
+
+TEST_CASE("HolyricsJson.Importar reimportar no duplica") {
+    SongDatabase db;
+    REQUIRE(db.Abrir(":memory:"));
+
+    const char* ruta = "tmp_holyrics_dup.json";
+    const char* contenido =
+        "{\"song\":{\"title\":\"Test Canto\",\"author\":\"Anónimo\","
+        "\"slides\":[{\"name\":\"Coro\",\"type\":\"chorus\",\"text\":\"línea 1\\nlínea 2\"}]}}";
+    {
+        std::ofstream f(ruta, std::ios::binary);
+        f << contenido;
+    }
+    REQUIRE(HolyricsJson::Importar(db, ruta) == 1);
+    REQUIRE(HolyricsJson::Importar(db, ruta) == 0);   // ya existía
+    std::remove(ruta);
+    CHECK(db.ListarTodos().size() == 1);
+}
+
+TEST_CASE("HolyricsJson.Importar lista de cantos") {
+    SongDatabase db;
+    REQUIRE(db.Abrir(":memory:"));
+
+    const char* ruta = "tmp_holyrics_lista.json";
+    {
+        std::ofstream f(ruta, std::ios::binary);
+        f << "{\"songs\":["
+          << "{\"title\":\"Uno\",\"slides\":[{\"name\":\"V1\",\"type\":\"verse\",\"text\":\"a\"}]},"
+          << "{\"title\":\"Dos\",\"slides\":[{\"name\":\"C\",\"type\":\"chorus\",\"text\":\"b\"}]},"
+          << "{\"title\":\"Sin secciones\"}"
+          << "]}";
+    }
+    const int n = HolyricsJson::Importar(db, ruta);
+    std::remove(ruta);
+    CHECK(n == 2);
+    CHECK(db.ListarTodos().size() == 2);
+}
