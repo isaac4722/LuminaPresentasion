@@ -5,6 +5,7 @@
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
 #include <windows.h>
+#include <d3d9.h>      // Necesario antes de vmr9.h (define IDirect3DDevice9 etc.)
 #include <dshow.h>
 #include <vmr9.h>
 
