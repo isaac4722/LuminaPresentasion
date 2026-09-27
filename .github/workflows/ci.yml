@@ -152,13 +152,41 @@ jobs:
         with:
           arch: ${{ matrix.arquitectura }}
 
+      - name: Caché de Qt 5.15.2
+        id: cache_qt
+        uses: actions/cache@v4
+        with:
+          path: C:\Qt\5.15.2
+          key: qt-5.15.2-${{ matrix.arquitectura == 'x86' && 'win32_msvc2019' || 'win64_msvc2019_64' }}
+
+      # aqtinstall falla de forma esporádica al extraer un 7z corrupto
+      # (Bad7zFile) cuando el espejo entrega un paquete truncado. Mitigación:
+      # 3 intentos alternando espejos oficiales de Qt, con limpieza previa.
       - name: Instalar Qt 5.15.2
+        if: steps.cache_qt.outputs.cache-hit != 'true'
+        shell: pwsh
         run: |
           pip install aqtinstall
-          if ("${{ matrix.arquitectura }}" -eq "x86") {
-            aqt install-qt windows desktop 5.15.2 win32_msvc2019 -O C:\Qt
-          } else {
-            aqt install-qt windows desktop 5.15.2 win64_msvc2019_64 -O C:\Qt
+          $arch = if ("${{ matrix.arquitectura }}" -eq "x86") { "win32_msvc2019" } else { "win64_msvc2019_64" }
+          $espejos = @("", "https://download.qt.io/", "https://mirrors.ocf.berkeley.edu/qt/")
+          $ok = $false
+          foreach ($espejo in $espejos) {
+            for ($intento = 1; $intento -le 2; $intento++) {
+              Write-Host "== aqt install-qt $arch (espejo: '$espejo', intento $intento) =="
+              Remove-Item -Recurse -Force -ErrorAction SilentlyContinue "C:\Qt\5.15.2"
+              if ([string]::IsNullOrEmpty($espejo)) {
+                aqt install-qt windows desktop 5.15.2 $arch -O C:\Qt
+              } else {
+                aqt install-qt windows desktop 5.15.2 $arch -O C:\Qt -b $espejo
+              }
+              if ($LASTEXITCODE -eq 0) { $ok = $true; break }
+              Start-Sleep -Seconds 10
+            }
+            if ($ok) { break }
+          }
+          if (-not $ok) {
+            Write-Host "##[error]Instalación de Qt 5.15.2 falló tras 6 intentos"
+            exit 1
           }
 
       - name: Configurar CMake (qt-shell)
