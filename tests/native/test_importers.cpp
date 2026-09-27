@@ -106,3 +106,53 @@ TEST_CASE("JsonBible.Importar JSON corrupto devuelve 0") {
     std::remove(ruta);
     CHECK(n == 0);
 }
+
+// ---------------------------------------------------------------------------
+// TSV — libro\tcapitulo\tversiculo\ttexto
+// ---------------------------------------------------------------------------
+TEST_CASE("TsvBible.Importar inserta versículos y respeta encabezado") {
+    BibleDatabase db;
+    REQUIRE(db.Abrir(":memory:"));
+
+    const char* ruta = "tmp_tsv_bible_test.tsv";
+    {
+        std::ofstream f(ruta, std::ios::binary);
+        f << "book\tchapter\tverse\ttext\r\n"
+          << "Juan\t3\t16\tPorque de tal manera amó Dios al mundo...\r\n"
+          << "1 Corintios\t13\t4\tEl amor es sufrido, es benigno...\r\n"
+          << "\r\n"
+          << "Gn\t1\t1\tEn el principio creó Dios los cielos.\r\n";
+    }
+
+    const int n = TsvBible::Importar(db, ruta);
+    std::remove(ruta);
+    CHECK(n == 3);
+    CHECK(db.TotalVersiculos() == 3);
+
+    std::vector<Versiculo> v;
+    REQUIRE(db.ObtenerCita("Juan 3:16", &v));
+    REQUIRE(v.size() == 1);
+    v.clear();
+    REQUIRE(db.ObtenerCita("1 Co 13:4", &v));
+    REQUIRE(v.size() == 1);
+    v.clear();
+    REQUIRE(db.ObtenerCita("Génesis 1:1", &v));
+    REQUIRE(v.size() == 1);
+}
+
+TEST_CASE("TsvBible.Importar salta líneas malformadas") {
+    BibleDatabase db;
+    REQUIRE(db.Abrir(":memory:"));
+
+    const char* ruta = "tmp_tsv_bible_mal.tsv";
+    {
+        std::ofstream f(ruta, std::ios::binary);
+        f << "Juan\t3\t16\tok\n"
+          << "solo tres campos\t1\t2\n"          // <4 campos → fuera
+          << "Juan\tcero\t16\tcap no numérico\n" // cap inválido → fuera
+          << "Juan\t3\t17\tok también\n";
+    }
+    const int n = TsvBible::Importar(db, ruta);
+    std::remove(ruta);
+    CHECK(n == 2);
+}
