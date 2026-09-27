@@ -51,6 +51,8 @@
     <Reference Include="System.Data" />
     <Reference Include="System.Xml" />
     <Reference Include="System.Net.Http" />
+    <Reference Include="System.IO.Compression" />
+    <Reference Include="System.IO.Compression.FileSystem" />
   </ItemGroup>
 
   <ItemGroup>
@@ -70,6 +72,7 @@
     <Compile Include="Forms\DiagnosticForm.cs" />
     <Compile Include="Forms\DiagnosticForm.Designer.cs" />
     <Compile Include="Ipc\IpcClient.cs" />
+    <Compile Include="Interop\ImportadorPptx.cs" />
     <Compile Include="Data\AhpProgram.cs" />
     <Compile Include="Data\Scenario.cs" />
     <Compile Include="Data\Element.cs" />

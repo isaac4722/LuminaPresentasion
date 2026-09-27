@@ -36,6 +36,9 @@ namespace FusionHP.Managed.Data
         public bool AudioVideo = true;
         public string SubLower = "";
         public string TemaOverride = "";
+        // Tamaño uniforme de la caja de texto en puntos (sz/100 de
+        // PresentationML al importar PPTX); 0 = hereda del tema.
+        public double TamFuentePt = 0.0;
         public string Notas = "";
     }
 }

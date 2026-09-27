@@ -70,6 +70,13 @@ historial de uso.
 }
 ```
 
+## Escenario: campo `fondo`
+
+Color sólido del escenario (`"#RRGGBB"` o `"#RGB"`) o vacío/ausente =
+hereda del tema. Es el destino del "fondo del diseño" al importar un
+PPTX (doc técnico 9.2.6: el fondo del diseño se traduce a fondo del
+Escenario). `Validar()` rechaza valores que no sean un color hex válido.
+
 ## Tipos de elemento
 
 ### `texto`
@@ -86,6 +93,7 @@ etiqueta de sincronización que se usa para saltar línea por línea).
 | `tono_origen` | string?          | no        | p.ej. `"C"`                            |
 | `tono_actual` | string?          | no        | p.ej. `"D"` (si se transpuso)          |
 | `bpm`         | number?          | no        |                                        |
+| `tam_fuente_pt` | number?        | no        | Tamaño uniforme de la caja en puntos (sz/100 de PresentationML al importar PPTX, doc 9.2.3); 0/ausente = hereda del tema |
 
 ### `versiculo`
 
