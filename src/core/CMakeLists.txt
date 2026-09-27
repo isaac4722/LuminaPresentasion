@@ -99,7 +99,7 @@ target_include_directories(FusionCore PRIVATE
 
 target_link_libraries(FusionCore PRIVATE
     fusion_third_party
-    d2d1 dwrite dwrite_1 d2d1_1
+    d2d1 dwrite
     windowscodecs
     d3d11
     strmiids ole32 oleaut32
