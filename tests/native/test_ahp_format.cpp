@@ -37,7 +37,7 @@ TEST_CASE("AhpFormat.Serializar luego CargarFromString redondea") {
     Programa p;
     p.titulo = "Ida y vuelta";
     Escenario e; e.id = "esc-1"; e.nombre = "Escena 1";
-    Element el; el.id = "el-1"; el.tipo = TipoElemento::Texto;
+    Elemento el; el.id = "el-1"; el.tipo = TipoElemento::Texto;
     el.titulo = "Hola";
     el.lineas.push_back({"Hola mundo", "1"});
     e.elementos.push_back(el);

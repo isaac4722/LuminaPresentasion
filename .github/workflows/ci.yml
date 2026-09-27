@@ -91,6 +91,26 @@ jobs:
           # Instalar reference assemblies 3.5 si no están
           choco install -y netfx-3.5-devpack --ignore-dependencies || true
 
+      - name: Verificar reference assemblies
+        run: |
+          Write-Host "Reference assemblies 3.5:"
+          if (Test-Path "C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v3.5\Profile\Client") {
+            Write-Host "  OK 3.5 Profile\Client"
+          }
+          if (Test-Path "C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v3.5") {
+            Write-Host "  OK 3.5 (full)"
+          }
+          Write-Host "Reference assemblies 4.8:"
+          if (Test-Path "C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.8") {
+            Write-Host "  OK 4.8"
+          }
+          Write-Host "Reference assemblies 4.0:"
+          if (Test-Path "C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.0") {
+            Write-Host "  OK 4.0 (este es el que MSBuild está buscando por defecto)"
+          } else {
+            Write-Host "  NO HAY 4.0"
+          }
+
       - name: Setup MSBuild
         uses: microsoft/setup-msbuild@v2
 
@@ -103,13 +123,9 @@ jobs:
         working-directory: src/managed
         run: nuget restore FusionHP.Managed.sln
 
-      - name: Build net35
+      - name: Build dual (net35 + net48)
         working-directory: src/managed
-        run: msbuild FusionHP.Managed.sln /p:Configuration=Release /p:Platform="Any CPU" /p:TargetFramework=net35 /m
-
-      - name: Build net48
-        working-directory: src/managed
-        run: msbuild FusionHP.Managed.sln /p:Configuration=Release /p:Platform="Any CPU" /p:TargetFramework=net48 /m
+        run: msbuild FusionHP.Managed.sln /p:Configuration=Release /p:Platform="Any CPU" /m /v:minimal
 
       - name: Tests gestionados
         working-directory: src/managed
