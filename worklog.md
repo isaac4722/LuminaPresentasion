@@ -202,3 +202,35 @@ Stage Summary:
 - Pendiente: Sección 5.4 (herencia de estilos 4 niveles con informe
   de fidelidad) y Sección 9.2/9.3 (importador PPTX + exportadores
   PPTX/PDF/imágenes).
+
+---
+## Sesión 2026-09-27 (III) — verificación local, herencia de temas y FTS
+
+Work Log:
+- Auditoría del estado: CI rojo solo por el paso "Instalar Qt 5.15.2"
+  del job x64 (aqtinstall Bad7zFile: 7z truncado del espejo). Todo lo
+  demás (núcleo x86/x64 + tests, launcher, net48, Qt x86) verde.
+- fix(ci) 811f5b7: caché de C:\Qt\5.15.2 por arquitectura + hasta 6
+  intentos alternando espejos oficiales de Qt con limpieza previa.
+- Verificación local del arnés nativo en Linux (gcc-14, script
+  build_tests_gcc.sh): reproduce el target fusion_tests fuera de MSVC.
+- fix(datos) 03b2e4b: SqlScript::Partir partía los cuerpos
+  BEGIN...END de los triggers → los CREATE TRIGGER llegaban rotos
+  ('incomplete input'), los triggers del FTS nunca se creaban y
+  Buscar() sobre biblias importadas devolvía vacío. Ahora detecta
+  CREATE TRIGGER ... BEGIN ... END; sin romper BEGIN TRANSACTION.
+  Test de regresión end-to-end: INSERT → MATCH en versiculos_fts.
+- feat(estilos) 1644dae: herencia de temas 4 niveles (raíz →
+  escenario → elemento → runtime) con informe de fidelidad
+  (nivel/propiedad/valor anterior/valor nuevo). BibliotecaTemas
+  (runtime/temas.json, v1, validación estricta). AplicarAEstilos a
+  EstiloTexto + Fondo con política de valores inválidos. Portable,
+  UTF-8 propio. docs/agent/themes.md ya no es "pendiente".
+
+Stage Summary:
+- Verificación local antes de pushear: 47 test cases / 303
+  assertions en verde (doctest, gcc-14 Linux).
+- Commits: 811f5b7 (ci), 03b2e4b (datos), 1644dae (estilos).
+- Pendiente: Sección 9.2/9.3 (modo 'modo' del elemento pptx en ahp.v1
+  + proyección archivo-original + exportadores PPTX/PDF/imágenes).
+- Ejecución de CI: https://github.com/isaac4722/LuminaPresentasion/actions/runs/36352041900
