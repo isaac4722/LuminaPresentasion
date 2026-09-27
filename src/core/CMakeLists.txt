@@ -67,14 +67,16 @@ target_include_directories(fusion_third_party PUBLIC
 # Forzar detección de lenguaje C para el target (sqlite3.c es C, no C++)
 set_target_properties(fusion_third_party PROPERTIES LINKER_LANGUAGE C)
 if(MSVC)
-    target_compile_options(fusion_third_party PRIVATE
-        /W0
-        /D SQLITE_THREADSAFE=1
-        /D SQLITE_DEFAULT_WAL_SYNCHRONOUS=1
-        /D SQLITE_OMIT_LOAD_EXTENSION=1
-        /D SQLITE_USE_URI=0
-        /D SQLITE_DQS=0
-        /D SQLITE_ENABLE_FTS5=1
+    target_compile_options(fusion_third_party PRIVATE /W0)
+    # compile_definitions (NO compile_options con /D): con Ninja+MSVC,
+    # "/D X=1" con espacio se parte en dos y cl.exe lo ignora (D9024).
+    target_compile_definitions(fusion_third_party PRIVATE
+        SQLITE_THREADSAFE=1
+        SQLITE_DEFAULT_WAL_SYNCHRONOUS=1
+        SQLITE_OMIT_LOAD_EXTENSION=1
+        SQLITE_USE_URI=0
+        SQLITE_DQS=0
+        SQLITE_ENABLE_FTS5=1
     )
 endif()
 

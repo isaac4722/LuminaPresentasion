@@ -55,18 +55,18 @@ std::string QuitarBom(const std::string& s) {
     return s;
 }
 
-// Nombre del tag sin < / > ni atributos: "biblebook", "/chapter", "vers".
+// Nombre del tag sin < > ni atributos: "biblebook", "/chapter", "vers".
+// Los tags de cierre conservan la "/" inicial ("chapter" ≠ "/chapter"),
+// de modo que EsTag solo reconoce aperturas.
 std::string NombreTag(const std::string& tag) {
     size_t i = 1;                       // salta '<'
-    bool cierre = false;
-    if (i < tag.size() && tag[i] == '/') { cierre = true; ++i; }
     std::string nombre;
+    if (i < tag.size() && tag[i] == '/') { nombre += '/'; ++i; }
     while (i < tag.size() && tag[i] != '>' && tag[i] != ' ' &&
            tag[i] != '\t' && tag[i] != '\n' && tag[i] != '\r') {
         nombre += tag[i];
         ++i;
     }
-    (void)cierre;
     return Minusculas(nombre);
 }
 

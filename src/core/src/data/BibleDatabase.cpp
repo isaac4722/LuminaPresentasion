@@ -8,9 +8,11 @@
 
 #include "sqlite3.h"
 #include "esquema_biblia.h"   // generado por CMake: esquema embebido
+#include "fusion/data/SqlScript.h"
 
 #include <algorithm>
 #include <cctype>
+#include <cstdio>
 #include <map>
 #include <string>
 #include <vector>
@@ -219,11 +221,10 @@ int ResolverLibroId(sqlite3* db, const std::string& libro_norm) {
 struct BibleDatabase::Impl {
     sqlite3* db = nullptr;
 
+    // Ejecución resiliente del esquema (ver fusion/data/SqlScript.h):
+    // un statement fallido no aborta el resto y el error queda en stderr.
     bool Ejecutar(const char* sql) {
-        char* err = nullptr;
-        int rc = sqlite3_exec(db, sql, nullptr, nullptr, &err);
-        if (err) sqlite3_free(err);
-        return rc == SQLITE_OK;
+        return sqlutil::EjecutarScript(db, sql);
     }
 };
 
