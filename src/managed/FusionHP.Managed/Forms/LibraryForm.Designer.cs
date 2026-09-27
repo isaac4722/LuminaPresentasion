@@ -17,7 +17,6 @@ namespace FusionHP.Managed.Forms
         private System.Windows.Forms.ComboBox cmbBiblias;
         private System.Windows.Forms.TreeView treeBiblia;
         private System.Windows.Forms.TextBox txtVersiculo;
-        private System.Windows.Forms.Splitter splitter;
 
         private void InitializeComponent()
         {
@@ -36,7 +35,7 @@ namespace FusionHP.Managed.Forms
 
             txtBuscarCanto.Location = new System.Drawing.Point(12, 35);
             txtBuscarCanto.Size = new System.Drawing.Size(280, 23);
-            txtBuscarCanto.PlaceholderText = "Buscar canto...";
+            txtBuscarCanto.Text = "";
 
             lstCantos.Location = new System.Drawing.Point(12, 64);
             lstCantos.Size = new System.Drawing.Size(280, 580);

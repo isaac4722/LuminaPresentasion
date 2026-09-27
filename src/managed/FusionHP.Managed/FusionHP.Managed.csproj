@@ -8,7 +8,9 @@
     <RootNamespace>FusionHP.Managed</RootNamespace>
     <AssemblyName>FusionHP.Managed</AssemblyName>
     <UseWindowsForms>true</UseWindowsForms>
-    <TargetFrameworks>net35;net48</TargetFrameworks>
+    <!-- Dual target net35+net48. Permitir override por /p:TargetFramework=
+         (singular) para hacer builds de un solo target a la vez. -->
+    <TargetFrameworks Condition=" '$(TargetFramework)' == '' ">net35;net48</TargetFrameworks>
   </PropertyGroup>
 
   <ItemGroup>

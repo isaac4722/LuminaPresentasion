@@ -33,7 +33,7 @@ namespace FusionHP.Managed.Forms
 
             txtCita.Location = new System.Drawing.Point(12, 40);
             txtCita.Size = new System.Drawing.Size(280, 23);
-            txtCita.PlaceholderText = "Cita, p.ej. Juan 3:16";
+            txtCita.Text = "";
             txtCita.KeyDown += new System.Windows.Forms.KeyEventHandler(txtCita_KeyDown);
 
             btnIr.Text = "Ir (Enter)";

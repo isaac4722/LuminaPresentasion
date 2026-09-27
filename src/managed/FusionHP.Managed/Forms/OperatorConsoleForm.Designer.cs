@@ -2,7 +2,7 @@ namespace FusionHP.Managed.Forms
 {
     partial class OperatorConsoleForm
     {
-        private System.ComponentModel.IContainer components = null;
+        private System.ComponentModel.IContainer components;
 
         private System.Windows.Forms.Label lblReloj;
         private System.Windows.Forms.Label lblEnPantalla;
@@ -72,7 +72,7 @@ namespace FusionHP.Managed.Forms
 
             txtBuscarPrograma.Location = new System.Drawing.Point(550, 60);
             txtBuscarPrograma.Size = new System.Drawing.Size(420, 23);
-            txtBuscarPrograma.PlaceholderText = "Buscar en programa...";
+            txtBuscarPrograma.Text = "";
 
             lstPrograma.Location = new System.Drawing.Point(550, 90);
             lstPrograma.Size = new System.Drawing.Size(420, 500);

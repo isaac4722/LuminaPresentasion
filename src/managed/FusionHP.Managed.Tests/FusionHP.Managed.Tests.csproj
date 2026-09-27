@@ -8,7 +8,7 @@
     <RootNamespace>FusionHP.Managed.Tests</RootNamespace>
     <AssemblyName>FusionHP.Managed.Tests</AssemblyName>
     <!-- Arnés propio sin vstest; corre como exe normal. -->
-    <TargetFrameworks>net48</TargetFrameworks>
+    <TargetFrameworks Condition=" '$(TargetFramework)' == '' ">net48</TargetFrameworks>
   </PropertyGroup>
 
   <ItemGroup>

@@ -71,6 +71,7 @@ endif()
 # ---------------------------------------------------------------------------
 add_executable(FusionCore WIN32
     ${FUSION_SRC_DIR}/main.cpp
+    ${FUSION_SRC_DIR}/Version.cpp
 
     ${FUSION_SRC_DIR}/core/Engine.cpp
     ${FUSION_SRC_DIR}/core/Session.cpp
