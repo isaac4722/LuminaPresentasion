@@ -221,7 +221,7 @@ namespace FusionHP.Managed.Interop
                 ImportarDiapositiva(zip, parteSlide, slideBytes, escenario,
                                     inf, n);
                 programa.Escenarios.Add(escenario);
-                ++informe.DiapositivasLeidas;
+                ++inf.DiapositivasLeidas;
             }
             return programa;
         }
