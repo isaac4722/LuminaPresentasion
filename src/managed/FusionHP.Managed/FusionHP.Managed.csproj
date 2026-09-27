@@ -23,9 +23,8 @@
     <Platforms>AnyCPU</Platforms>
     <PlatformTarget>AnyCPU</PlatformTarget>
     <!-- SDK-style autoincluye *.cs; como ya los tenemos explícitos,
-         desactivamos la inclusión automática para evitar duplicados. -->
+         desactivamos la inclusión automática de Compile items. -->
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
-    <EnableDefaultItems>false</EnableDefaultItems>
     <!-- SDK-style genera AssemblyInfo.cs automáticamente. -->
     <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
   </PropertyGroup>
