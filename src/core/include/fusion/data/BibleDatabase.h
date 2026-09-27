@@ -44,7 +44,20 @@ public:
     std::vector<Versiculo> ObtenerCapitulo(int libro_id, int capitulo) const;
 
     // Cita directa "Salmo 100:4" o "Juan 3:16-18".
+    // Normaliza acentos/mayúsculas y resuelve el libro por nombre, abrev3,
+    // abrev2 y alias (incl. abreviaturas inglesas de archivos importados).
     bool ObtenerCita(const std::string& cita, std::vector<Versiculo>* out) const;
+
+    // API de inserción usada por los importadores (JSON/TSV/Zefania/e-Sword)
+    // y por los tests. Crea el capítulo si no existe; INSERT OR REPLACE en
+    // versículos para que reimportar no duplique. Resuelve libro_abrev con
+    // la misma normalización de ObtenerCita.
+    bool InsertarVersiculo(const std::string& libro_abrev,
+                           int capitulo, int versiculo,
+                           const std::string& texto);
+
+    // Total de versículos insertados en esta BD.
+    std::int64_t TotalVersiculos() const;
 
     // Búsqueda libre (FTS5). ≤200 ms objetivo P2.
     std::vector<Versiculo> Buscar(const std::string& texto, int limite = 200) const;
