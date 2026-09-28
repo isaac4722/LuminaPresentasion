@@ -346,13 +346,15 @@ jobs:
       - name: Inno Setup (x86)
         shell: pwsh
         run: |
-          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" /DARCH=x86 /DPACKAGE=build\paquete\x86 installer\FusionHP.iss
+          $paq = (Resolve-Path "build\paquete\x86").Path
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" /DARCH=x86 "/DPACKAGE=$paq" installer\FusionHP.iss
           if ($LASTEXITCODE -ne 0) { exit 1 }
 
       - name: Inno Setup (x64)
         shell: pwsh
         run: |
-          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" /DARCH=x64 /DPACKAGE=build\paquete\x64 installer\FusionHP.iss
+          $paq = (Resolve-Path "build\paquete\x64").Path
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" /DARCH=x64 "/DPACKAGE=$paq" installer\FusionHP.iss
           if ($LASTEXITCODE -ne 0) { exit 1 }
 
       - name: Subir instaladores
