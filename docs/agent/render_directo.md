@@ -87,16 +87,34 @@ sola fuente de verdad portable):
 - Aspecto inválido (<= 0) en un plan hecho a mano → objetivo completo
   (degradación tolerante, igual que v1).
 
-## 4. Fuera de alcance v1.1 (piezas siguientes)
+## 4. Auto-ajuste del texto y escala por resolución (v1.1)
+
+El tamaño del tema (`texto.tamano`) está **calibrado a 1080p de altura**
+de objetivo. Dos mecanismos lo hacen legible siempre, ambos portables y
+por tanto testados:
+
+- **Auto-ajuste en `ConstruirPlan`**: con métricas estimadas (letra
+  media 0.55 x tamaño; CJK/fullwidth 1.0; interlineado 1.35) se envuelve
+  cada texto y se reduce el tamaño x0.90 hasta que el párrafo más
+  exigente cabe en su slot, o se llega al mínimo `max(9 px, 1.1 % de
+  1080)`. Cada reducción avisa ("El cuerpo se redujo a N pt..."), nada
+  silencioso. La referencia es el objetivo 1920x1080 con el rect de
+  contenido derivado del letterbox (sección 3).
+- **Escala en el consumidor**: `DibujarPlan` y `RasterizadorDirectoD2D`
+  multiplican el tamaño por `alto / 1080` — un plan proyectado a 800x450
+  o rasterizado a 1080p se ve proporcionalmente igual.
+
+La estimación erra hacia abajo por diseño: letra algo menor, nunca
+recorte; el pincel final lo pone DirectWrite con métricas reales.
+
+## 5. Fuera de alcance v1.1 (piezas siguientes)
 
 - Imágenes/formas internas de las diapositivas pptx (posición EMU,
   media del paquete `ppt/media/`).
 - Estilos por-run del pptx (negrita/tamaño/color por run).
 - Fondo tipo imagen en el modo directo (hoy: aviso + color1).
-- Auto-ajuste del tamaño de texto cuando un párrafo no cabe en su slot
-  (hoy: DirectWrite recorta dentro del rect con clip).
 
-## 5. Pruebas
+## 6. Pruebas
 
 - `tests/native/test_render_directo.cpp` (portable, gcc-14 y MSVC):
   Utf8AUtf16 (ASCII/acentos/CJK/emoji/suplentes/roto/truncado/suelto/
@@ -105,7 +123,10 @@ sola fuente de verdad portable):
   `DibujarPlan` con mock de grabación (orden y escalado), letterbox
   (4:3 en 16:9 centrado, 16:9 en 4:3 con bandas arriba/abajo, aspecto
   inválido degrada a objetivo completo, e2e ConstruirPlan→DibujarPlan
-  con todos los pasos dentro del rect), no-ops
+  con todos los pasos dentro del rect), auto-ajuste (párrafo largo
+  reduce con aviso, 12 párrafos reducen a su slot, título largo se
+  reduce, saturado llega al mínimo 11.88, control sin reducción) y
+  escala por resolución (identidad a 1080p, 60→25 px a 800x450), no-ops
   seguros.
 - La parte D2D (`RasterizadorDirectoD2D`, rutinas `*EnRT`) solo compila
   en MSVC (CI: núcleo x86/x64 + qt_shell).

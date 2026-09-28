@@ -433,3 +433,128 @@ TEST_CASE("DibujarPlan: ConstruirPlan con 4:3 y despacho letterbox e2e") {
         CHECK(t.y + t.h <= 1080.0f + 0.01f);
     }
 }
+
+// ---------------------------------------------------------------------------
+// Auto-ajuste del tamaño de texto y escala por resolución
+// ---------------------------------------------------------------------------
+
+TEST_CASE("ConstruirPlan: parrafo largo reduce el tamano del cuerpo con aviso") {
+    const ResolucionTema tema = HerenciaTemas::Resolver(
+        nullptr, nullptr, nullptr, nullptr, nullptr);
+
+    // Control: un párrafo corto se queda con el tamaño del tema (60).
+    DiapositivaPptx corto;
+    corto.parrafos = {"Solo una linea corta"};
+    PlanRenderDirecto plan_c;
+    const ResultadoRenderDirecto r_c =
+        RenderDirecto::ConstruirPlan(corto, tema, 16.0f / 9.0f, &plan_c);
+    REQUIRE(r_c.ok);
+    REQUIRE(plan_c.pasos.size() == 1);
+    CHECK(plan_c.pasos[0].estilo.tamano == doctest::Approx(60.0f));
+    CHECK(r_c.avisos.empty());
+
+    // Largo: una sola línea no basta; el tamaño baja (x0.90) hasta que
+    // la envoltura estimada cabe en el slot (banda completa 0.80x1080
+    // al no haber título).
+    DiapositivaPptx largo;
+    std::string relleno;
+    for (int i = 0; i < 90; ++i) relleno += "palabra ";
+    largo.parrafos.push_back(relleno);
+    PlanRenderDirecto plan;
+    const ResultadoRenderDirecto r =
+        RenderDirecto::ConstruirPlan(largo, tema, 16.0f / 9.0f, &plan);
+    REQUIRE(r.ok);
+    REQUIRE(plan.pasos.size() == 1);
+    CHECK(plan.pasos[0].estilo.tamano < 60.0f);
+    CHECK(plan.pasos[0].estilo.tamano >= 0.011f * 1080.0f);
+    bool aviso_reduccion = false;
+    for (const auto& a : r.avisos)
+        if (a.find("cuerpo se redujo") != std::string::npos)
+            aviso_reduccion = true;
+    CHECK(aviso_reduccion);
+}
+
+TEST_CASE("ConstruirPlan: doce parrafos reparten el cuerpo y reducen el "
+          "tamano") {
+    const ResolucionTema tema = HerenciaTemas::Resolver(
+        nullptr, nullptr, nullptr, nullptr, nullptr);
+
+    DiapositivaPptx d;
+    for (int i = 1; i <= 12; ++i)
+        d.parrafos.push_back("Parrafo " + std::to_string(i));
+    PlanRenderDirecto plan;
+    const ResultadoRenderDirecto r =
+        RenderDirecto::ConstruirPlan(d, tema, 16.0f / 9.0f, &plan);
+    REQUIRE(r.ok);
+    REQUIRE(plan.pasos.size() == 12);
+
+    // Slot de 0.56x1080/12 = 48.24 px: una línea exige <= 35.7 pt.
+    CHECK(plan.pasos[0].estilo.tamano < 60.0f);
+    CHECK(plan.pasos[0].estilo.tamano >= 0.011f * 1080.0f);
+    CHECK(r.avisos.size() == 1);  // solo la reducción (no hubo recorte)
+    CHECK(r.avisos[0].find("cuerpo se redujo") != std::string::npos);
+
+    // Todos los pasos comparten el tamaño ajustado.
+    for (const auto& p : plan.pasos)
+        CHECK(p.estilo.tamano == plan.pasos[0].estilo.tamano);
+}
+
+TEST_CASE("ConstruirPlan: titulo largo se reduce y avisa") {
+    const ResolucionTema tema = HerenciaTemas::Resolver(
+        nullptr, nullptr, nullptr, nullptr, nullptr);
+
+    DiapositivaPptx d;
+    d.titulo = std::string(120, 'x');  // 120 caracteres, banda de 0.18x1080
+    PlanRenderDirecto plan;
+    const ResultadoRenderDirecto r =
+        RenderDirecto::ConstruirPlan(d, tema, 16.0f / 9.0f, &plan);
+    REQUIRE(r.ok);
+    REQUIRE(plan.pasos.size() == 1);
+    CHECK(plan.pasos[0].tipo == PasoDibujo::Tipo::Titulo);
+    CHECK(plan.pasos[0].estilo.tamano < 60.0f);
+    CHECK(r.avisos.size() == 1);
+    CHECK(r.avisos[0].find("título se redujo") != std::string::npos);
+}
+
+TEST_CASE("ConstruirPlan: texto saturado llega al tamano minimo") {
+    const ResolucionTema tema = HerenciaTemas::Resolver(
+        nullptr, nullptr, nullptr, nullptr, nullptr);
+
+    DiapositivaPptx d;
+    for (int i = 0; i < 200; ++i)
+        d.parrafos.push_back("linea de texto para saturar el area");
+    OpcionesRenderDirecto ops;
+    ops.max_parrafos = 200;
+
+    PlanRenderDirecto plan;
+    const ResultadoRenderDirecto r =
+        RenderDirecto::ConstruirPlan(d, tema, 16.0f / 9.0f, &plan, ops);
+    REQUIRE(r.ok);
+    REQUIRE(plan.pasos.size() == 200);
+    // Mínimo del contrato: max(9, 1.1 % de 1080) = 11.88 px.
+    CHECK(plan.pasos[0].estilo.tamano ==
+          doctest::Approx(0.011f * 1080.0f).epsilon(0.01));
+}
+
+TEST_CASE("DibujarPlan: reescala el tamano de fuente al objetivo (alto/1080)") {
+    PlanRenderDirecto plan;
+    plan.aspecto = 16.0f / 9.0f;
+    PasoDibujo cuerpo;
+    cuerpo.tipo = PasoDibujo::Tipo::Cuerpo;
+    cuerpo.x = 0.08f; cuerpo.y = 0.10f; cuerpo.w = 0.84f; cuerpo.h = 0.80f;
+    cuerpo.texto = L"Texto";
+    cuerpo.estilo.tamano = 60.0f;
+    plan.pasos.push_back(cuerpo);
+
+    // Objetivo 1080p: identidad.
+    RendererGrabador m1080;
+    DibujarPlan(&m1080, plan, 1920.0f, 1080.0f);
+    REQUIRE(m1080.textos.size() == 1);
+    CHECK(m1080.textos[0].estilo.tamano == doctest::Approx(60.0f));
+
+    // Objetivo 800x450: 450/1080 = 0.4167 -> 25 px.
+    RendererGrabador m450;
+    DibujarPlan(&m450, plan, 800.0f, 450.0f);
+    REQUIRE(m450.textos.size() == 1);
+    CHECK(m450.textos[0].estilo.tamano == doctest::Approx(25.0f).epsilon(0.01));
+}

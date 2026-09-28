@@ -102,6 +102,105 @@ std::wstring Utf8AUtf16(const std::string& utf8) {
 }
 
 // ---------------------------------------------------------------------------
+// Portable: estimación de ajuste de texto (auto-ajuste determinista)
+// ---------------------------------------------------------------------------
+
+// Métricas estimadas del contrato (docs/agent/render_directo.md): letra
+// media 0.55 x tamaño (latín); 1.0 x tamaño (CJK/fullwidth); interlineado
+// 1.35. La estimación solo guía el auto-ajuste (errar hacia abajo es
+// seguro: letra algo menor, nunca recorte); el dibujado final lo hace
+// DirectWrite con métricas reales.
+constexpr float kInterlineado   = 1.35f;
+constexpr float kAnchoMedio     = 0.55f;
+constexpr float kAnchoAncho     = 1.00f;
+constexpr float kAltoReferencia = 1080.0f;  // altura de calibración del plan
+constexpr float kPasoAjuste     = 0.90f;
+constexpr float kTamMinAbs      = 9.0f;
+constexpr float kTamMinRel      = 0.011f;  // del alto de referencia
+
+bool EsLetraAncha(unsigned int cp) {
+    return (cp >= 0x1100 && cp <= 0x11FF) ||  // Hangul Jamo
+           (cp >= 0x2E80 && cp <= 0x9FFF) ||  // CJK
+           (cp >= 0xAC00 && cp <= 0xD7AF) ||  // Hangul silábico
+           (cp >= 0xF900 && cp <= 0xFAFF) ||  // ideogramas de compat.
+           (cp >= 0xFF00 && cp <= 0xFF60) ||  // fullwidth
+           (cp >= 0xFFE0 && cp <= 0xFFE6) ||
+           (cp >= 0x20000 && cp <= 0x3FFFD);  // suplementarios CJK
+}
+
+float AnchoEstimado(const std::wstring& s, float tam) {
+    float ancho = 0.0f;
+    for (wchar_t c : s) {
+        const unsigned int cp = static_cast<unsigned int>(c);
+        ancho += tam * (EsLetraAncha(cp) ? kAnchoAncho : kAnchoMedio);
+    }
+    return ancho;
+}
+
+// Líneas que ocuparía el texto envuelto por palabras a `tam` en un área
+// de `ancho` px. Palabra que sola excede el ancho: se parte por
+// caracteres (aproximación conservadora: cuenta líneas enteras).
+int ContarLineas(const std::wstring& texto, float tam, float ancho) {
+    if (texto.empty() || ancho <= 0.0f) return 0;
+    const float espacio = tam * kAnchoMedio;
+    int lineas = 0;
+    bool hay_linea = false;
+    float ancho_linea = 0.0f;
+    std::wstring token;
+    auto procesar = [&]() {
+        if (token.empty()) return;
+        const float at = AnchoEstimado(token, tam);
+        if (at > ancho) {
+            if (hay_linea) { ++lineas; hay_linea = false; ancho_linea = 0.0f; }
+            lineas += static_cast<int>(std::ceil(at / ancho));
+        } else if (!hay_linea) {
+            hay_linea = true;
+            ancho_linea = at;
+        } else if (ancho_linea + espacio + at <= ancho) {
+            ancho_linea += espacio + at;
+        } else {
+            ++lineas;
+            ancho_linea = at;
+        }
+        token.clear();
+    };
+    for (wchar_t c : texto) {
+        if (c == L' ' || c == L'\t' || c == L'\r' || c == L'\n') procesar();
+        else token.push_back(c);
+    }
+    procesar();
+    if (hay_linea) ++lineas;
+    return lineas;
+}
+
+// Tamaño (<= tam_inicial) tal que el párrafo más exigente cabe en su
+// slot (alto_area / n_slots) con el ancho_area dado. Reduce x0.90 por
+// intento hasta caber o llegar al mínimo (max(9 px, 1.1 % de 1080)).
+float AjustarTamano(const std::vector<std::wstring>& textos,
+                    float tam_inicial, float ancho_area, float alto_area,
+                    int n_slots) {
+    if (textos.empty() || n_slots <= 0 || ancho_area <= 0.0f ||
+        alto_area <= 0.0f)
+        return tam_inicial;
+    const float slot = alto_area / static_cast<float>(n_slots);
+    const float tam_min = std::max(kTamMinAbs, kTamMinRel * kAltoReferencia);
+    float tam = tam_inicial;
+    for (;;) {
+        float peor = 0.0f;
+        for (const auto& t : textos) {
+            const int nl = ContarLineas(t, tam, ancho_area);
+            if (nl > 0)
+                peor = std::max(peor, static_cast<float>(nl) * tam *
+                                          kInterlineado);
+        }
+        if (peor <= slot || tam <= tam_min) break;
+        tam *= kPasoAjuste;
+        if (tam < tam_min) tam = tam_min;
+    }
+    return tam;
+}
+
+// ---------------------------------------------------------------------------
 // Portable: encaje con bandas (letterbox)
 // ---------------------------------------------------------------------------
 
@@ -199,20 +298,10 @@ ResultadoRenderDirecto RenderDirecto::ConstruirPlan(
         out->fondo.tipo = Fondo::Tipo::Solido;
     }
 
-    // Título (placeholder de la diapositiva).
+    // Título (placeholder de la diapositiva): se agrega al plan después
+    // del cálculo de ajuste, para llevar el tamaño ya ajustado.
     const std::wstring titulo = Utf8AUtf16(diapo.titulo);
     const bool hay_titulo = !titulo.empty();
-    if (hay_titulo) {
-        PasoDibujo paso;
-        paso.tipo   = PasoDibujo::Tipo::Titulo;
-        paso.x      = kBandaX;
-        paso.y      = kTituloY;
-        paso.w      = kBandaW;
-        paso.h      = kTituloH;
-        paso.texto  = titulo;
-        paso.estilo = estilo;
-        out->pasos.push_back(std::move(paso));
-    }
 
     // Cuerpo: cada párrafo ocupa un slot vertical igual dentro de la
     // banda (el párrafo queda centrado en su slot por el renderizador).
@@ -228,8 +317,55 @@ ResultadoRenderDirecto RenderDirecto::ConstruirPlan(
         parrafos.resize(static_cast<size_t>(opciones.max_parrafos));
     }
 
+    // Auto-ajuste del tamaño (referencia 1080p): se reduce x0.90 hasta
+    // que el párrafo más exigente cabe en su slot. Los consumidores
+    // re-escalan el tamaño al objetivo real (alto / 1080).
+    EstiloTexto estilo_titulo = estilo;
+    EstiloTexto estilo_cuerpo = estilo;
+    const RectContenido referencia =
+        Encajar(out->aspecto, 16.0f * kAltoReferencia / 9.0f,
+                kAltoReferencia);
+    const float ancho_banda = kBandaW * referencia.w;
+
+    if (hay_titulo) {
+        const float ajustado = AjustarTamano(
+            {titulo}, estilo.tamano, ancho_banda, kTituloH * referencia.h, 1);
+        if (ajustado < estilo.tamano - 0.01f) {
+            r.avisos.push_back("El título se redujo a " +
+                std::to_string(static_cast<int>(ajustado + 0.5f)) +
+                " pt para caber en su banda");
+        }
+        estilo_titulo.tamano = ajustado;
+
+        PasoDibujo paso;
+        paso.tipo   = PasoDibujo::Tipo::Titulo;
+        paso.x      = kBandaX;
+        paso.y      = kTituloY;
+        paso.w      = kBandaW;
+        paso.h      = kTituloH;
+        paso.texto  = titulo;
+        paso.estilo = estilo_titulo;
+        out->pasos.push_back(std::move(paso));
+    }
+
     if (!parrafos.empty()) {
-        const int n = static_cast<int>(parrafos.size());
+        std::vector<std::wstring> cuerpo;
+        cuerpo.reserve(parrafos.size());
+        for (const auto& p : parrafos)
+            cuerpo.push_back(Utf8AUtf16(p));
+
+        const float ajustado = AjustarTamano(
+            cuerpo, estilo.tamano, ancho_banda,
+            cuerpo_h * referencia.h,
+            static_cast<int>(cuerpo.size()));
+        if (ajustado < estilo.tamano - 0.01f) {
+            r.avisos.push_back("El cuerpo se redujo a " +
+                std::to_string(static_cast<int>(ajustado + 0.5f)) +
+                " pt para caber en la diapositiva");
+        }
+        estilo_cuerpo.tamano = ajustado;
+
+        const int n = static_cast<int>(cuerpo.size());
         const float slot = cuerpo_h / static_cast<float>(n);
         for (int i = 0; i < n; ++i) {
             PasoDibujo paso;
@@ -238,8 +374,8 @@ ResultadoRenderDirecto RenderDirecto::ConstruirPlan(
             paso.y      = cuerpo_y + static_cast<float>(i) * slot;
             paso.w      = kBandaW;
             paso.h      = slot;
-            paso.texto  = Utf8AUtf16(parrafos[static_cast<size_t>(i)]);
-            paso.estilo = estilo;
+            paso.texto  = cuerpo[static_cast<size_t>(i)];
+            paso.estilo = estilo_cuerpo;
             out->pasos.push_back(std::move(paso));
         }
     }
@@ -254,9 +390,12 @@ void DibujarPlan(Renderer* r, const PlanRenderDirecto& plan,
     // El fondo cubre el objetivo completo: las bandas del letterbox
     // quedan con el tema (nunca escritorio ni vacíos negros espurios).
     r->DibujarFondo(plan.fondo);
+    // El tamaño del plan está calibrado a 1080p: se re-escala al objetivo.
+    const float escala_fuente = alto / kAltoReferencia;
     const RectContenido contenido = Encajar(plan.aspecto, ancho, alto);
     for (const PasoDibujo& paso : plan.pasos) {
-        const PasoDibujo q = Renormalizar(paso, contenido, ancho, alto);
+        PasoDibujo q = Renormalizar(paso, contenido, ancho, alto);
+        q.estilo.tamano *= escala_fuente;
         r->DibujarTexto(q.texto, q.estilo,
                         q.x * ancho, q.y * alto,
                         q.w * ancho, q.h * alto);
@@ -569,10 +708,12 @@ bool RasterizadorDirectoD2D::Rasterizar(const PlanRenderDirecto& plan,
                                 static_cast<float>(alto), nullptr);
     const RectContenido contenido = Encajar(
         plan.aspecto, static_cast<float>(ancho), static_cast<float>(alto));
+    const float escala_fuente = static_cast<float>(alto) / kAltoReferencia;
     for (const PasoDibujo& paso : plan.pasos) {
-        const PasoDibujo q = Renormalizar(paso, contenido,
-                                          static_cast<float>(ancho),
-                                          static_cast<float>(alto));
+        PasoDibujo q = Renormalizar(paso, contenido,
+                                    static_cast<float>(ancho),
+                                    static_cast<float>(alto));
+        q.estilo.tamano *= escala_fuente;
         rendirecto::DibujarPasoEnRT(rt.Get(), impl_->dw.Get(), q,
                                     &impl_->formatos,
                                     static_cast<float>(ancho),
