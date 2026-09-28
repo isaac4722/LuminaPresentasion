@@ -252,7 +252,8 @@ TEST_CASE("RenderDirecto: tema con valores inválidos y fondo imagen avisan") {
     CHECK(r.avisos[0].find("inválidos") != std::string::npos);
     CHECK(plan.fondo.tipo == Fondo::Tipo::Solido);  // default conservado
 
-    // Fondo imagen en el tema: aviso específico y cae a sólido color1.
+    // Fondo imagen CON ruta: se respeta (el renderer real la carga con
+    // WIC; sin aviso porque no hay degradación).
     const CapaTema tema_img = Capa({
         {"fondo.tipo",        "imagen"},
         {"fondo.color1",      "#101010"},
@@ -264,10 +265,46 @@ TEST_CASE("RenderDirecto: tema con valores inválidos y fondo imagen avisan") {
     const ResultadoRenderDirecto r2 =
         RenderDirecto::ConstruirPlan(DiapoEjemplo(), tema2, 16.0f / 9.0f, &plan2);
     REQUIRE(r2.ok);
-    REQUIRE(r2.avisos.size() == 1);
-    CHECK(r2.avisos[0].find("imagen") != std::string::npos);
-    CHECK(plan2.fondo.tipo == Fondo::Tipo::Solido);
-    CHECK(plan2.fondo.color1.r == 0x10);
+    CHECK(r2.avisos.empty());
+    CHECK(plan2.fondo.tipo == Fondo::Tipo::Imagen);
+    CHECK(plan2.fondo.ruta_imagen == L"fondo.png");
+
+    // Fondo imagen SIN ruta: degradación defensiva a sólido con aviso.
+    const CapaTema tema_img_sin_ruta = Capa({
+        {"fondo.tipo",   "imagen"},
+        {"fondo.color1", "#101010"},
+    });
+    const ResolucionTema tema3 = HerenciaTemas::Resolver(
+        &tema_img_sin_ruta, nullptr, nullptr, nullptr, nullptr);
+    PlanRenderDirecto plan3;
+    const ResultadoRenderDirecto r3 =
+        RenderDirecto::ConstruirPlan(DiapoEjemplo(), tema3, 16.0f / 9.0f, &plan3);
+    REQUIRE(r3.ok);
+    REQUIRE(r3.avisos.size() == 1);
+    CHECK(r3.avisos[0].find("sin ruta") != std::string::npos);
+    CHECK(plan3.fondo.tipo == Fondo::Tipo::Solido);
+    CHECK(plan3.fondo.color1.r == 0x10);
+}
+
+TEST_CASE("DibujarPlan: el fondo imagen viaja por DibujarFondo, no por "
+          "DibujarImagen") {
+    PlanRenderDirecto plan;
+    plan.aspecto = 16.0f / 9.0f;
+    plan.fondo.tipo = Fondo::Tipo::Imagen;
+    plan.fondo.ruta_imagen = L"fondos\\dominical.png";
+    plan.fondo.ajuste = AjusteImagen::Cubrir;
+
+    RendererGrabador mock;
+    DibujarPlan(&mock, plan, 1920.0f, 1080.0f);
+
+    // El fondo (imagen incluida) lo pinta DibujarFondo una sola vez; el
+    // renderer real resuelve la carga WIC. DibujarImagen queda reservado
+    // para las imágenes internas de las diapositivas (pieza siguiente).
+    REQUIRE(mock.fondos.size() == 1);
+    CHECK(mock.fondos[0].tipo == Fondo::Tipo::Imagen);
+    CHECK(mock.fondos[0].ruta_imagen == L"fondos\\dominical.png");
+    CHECK(mock.fondos[0].ajuste == AjusteImagen::Cubrir);
+    CHECK(mock.imagenes == 0);
 }
 
 TEST_CASE("RenderDirecto: aspecto saneado") {

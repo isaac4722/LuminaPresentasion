@@ -42,12 +42,13 @@ Layout con bandas normalizadas (0..1), independientes de resolución:
   texto queda centrado verticalmente en su slot (DirectWrite
   `PARAGRAPH_ALIGNMENT_CENTER`).
 - `aspecto` (de `InfoPptx`: `ancho_emu/alto_emu`) viaja en el plan
-  (default 16:9 si <=0, clamp defensivo [0.5, 4.0]); es informativo para
-  el shell (letterbox) — el v1 pinta full-bleed.
+  (default 16:9 si <=0, clamp defensivo [0.5, 4.0]); lo consumen
+  DibujarPlan y el rasterizador para el letterbox (sección 3).
 - El tema resuelto se aplica con `AplicarAEstilos`: texto y fondo del
   tema activo (5 niveles de herencia incluidos). Valores inválidos →
-  aviso y se conserva el default. **Fondo tipo imagen → aviso y se usa
-  `fondo.color1`** (fondo de imagen en modo directo: pieza siguiente).
+  aviso y se conserva el default. **Fondo tipo imagen con ruta se
+  respeta** (el renderer lo carga con WIC, full-bleed bajo el
+  letterbox); sin ruta → aviso y se usa `fondo.color1`.
 - `max_parrafos` (12 por defecto): el excedente se descarta **con
   aviso**, nada silencioso.
 - Diapositiva vacía → solo fondo (negro sólido si el tema no define;
@@ -112,14 +113,15 @@ recorte; el pincel final lo pone DirectWrite con métricas reales.
 - Imágenes/formas internas de las diapositivas pptx (posición EMU,
   media del paquete `ppt/media/`).
 - Estilos por-run del pptx (negrita/tamaño/color por run).
-- Fondo tipo imagen en el modo directo (hoy: aviso + color1).
 
 ## 6. Pruebas
 
 - `tests/native/test_render_directo.cpp` (portable, gcc-14 y MSVC):
   Utf8AUtf16 (ASCII/acentos/CJK/emoji/suplentes/roto/truncado/suelto/
   sobrecodificado), bandas y slots del plan, truncado de párrafos con
-  aviso, tema vacío/inválido/imagen, clamp de aspecto, despacho
+  aviso, tema vacío/inválido, fondo imagen con ruta (se respeta) y sin
+  ruta (degrada con aviso), imagen viaja por DibujarFondo, clamp de
+  aspecto, despacho
   `DibujarPlan` con mock de grabación (orden y escalado), letterbox
   (4:3 en 16:9 centrado, 16:9 en 4:3 con bandas arriba/abajo, aspecto
   inválido degrada a objetivo completo, e2e ConstruirPlan→DibujarPlan

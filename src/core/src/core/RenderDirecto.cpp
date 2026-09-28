@@ -291,10 +291,11 @@ ResultadoRenderDirecto RenderDirecto::ConstruirPlan(
             "El tema activo tiene valores inválidos: esas claves se "
             "ignoraron y se conservó el valor por defecto");
     }
-    if (out->fondo.tipo == Fondo::Tipo::Imagen) {
+    if (out->fondo.tipo == Fondo::Tipo::Imagen &&
+        out->fondo.ruta_imagen.empty()) {
+        // Fondo imagen sin ruta: nada que cargar → color1 y aviso.
         r.avisos.push_back(
-            "Fondo tipo imagen no soportado aún en el modo directo: se "
-            "usa fondo.color1 del tema");
+            "Fondo tipo imagen sin ruta: se usa fondo.color1 del tema");
         out->fondo.tipo = Fondo::Tipo::Solido;
     }
 
