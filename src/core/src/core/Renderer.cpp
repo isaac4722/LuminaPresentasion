@@ -1,16 +1,27 @@
 // src/core/src/core/Renderer.cpp — Implementación Direct2D + DirectWrite + GDI+
-// Stub fundacional: parámetros stub con dibujo mínimo negro.
+// El pintado real (fondo sólido/gradiente/imagen, texto con DirectWrite,
+// imágenes con WIC) vive en las rutinas compartidas de
+// RenderDirectoInterno.h: pantalla y rasterizador offscreen del modo
+// directo usan EXACTAMENTE la misma ruta (una sola fuente de verdad).
 
 #include "fusion/core/Renderer.h"
+#include "fusion/core/RenderDirecto.h"
 
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
 #include <windows.h>
+// El alias DrawText→DrawTextW de winuser rompe el método DrawText de
+// ID2D1RenderTarget. Este proyecto no usa el DrawText de GDI.
+#ifdef DrawText
+#undef DrawText
+#endif
 #include <d2d1.h>
 #include <dwrite.h>
 #include <wincodec.h>
 #include <gdiplus.h>
 #include <wrl/client.h>
+
+#include "RenderDirectoInterno.h"
 
 #include <string>
 
@@ -85,7 +96,14 @@ public:
             props,
             D2D1::HwndRenderTargetProperties(hwnd_, size),
             &rt_);
-        return SUCCEEDED(hr);
+        if (FAILED(hr)) return false;
+
+        // WIC para fondos/imágenes de elemento. No es fatal si falla:
+        // sólido/gradiente siguen; imagen caerá a color1 con aviso.
+        CoCreateInstance(CLSID_WICImagingFactory, nullptr,
+                         CLSCTX_INPROC_SERVER,
+                         IID_PPV_ARGS(wic_.GetAddressOf()));
+        return true;
     }
 
     void Liberar() override {
@@ -104,23 +122,32 @@ public:
 
     void DibujarFondo(const Fondo& f) override {
         if (!rt_) return;
-        ComPtr<ID2D1SolidColorBrush> brush;
-        D2D1_COLOR_F col = D2D1::ColorF(f.color1.r/255.0f, f.color1.g/255.0f, f.color1.b/255.0f, 1.0f);
-        rt_->CreateSolidColorBrush(col, brush.GetAddressOf());
-        D2D1_SIZE_F size = rt_->GetSize();
-        rt_->FillRectangle(D2D1::RectF(0,0,size.width,size.height), brush.Get());
+        const D2D1_SIZE_F s = rt_->GetSize();
+        rendirecto::PintarFondoEnRT(rt_.Get(), dw_.Get(), wic_.Get(), f,
+                                    &formatos_, s.width, s.height, nullptr);
     }
 
     void DibujarTexto(const std::wstring& texto, const EstiloTexto& estilo,
                        float x, float y, float w, float h) override {
-        // TODO(P0): usar IDWriteTextFormat + ID2D1SolidColorBrush.
-        (void)texto; (void)estilo; (void)x; (void)y; (void)w; (void)h;
+        if (!rt_) return;
+        const D2D1_SIZE_F s = rt_->GetSize();
+        if (s.width <= 0 || s.height <= 0) return;
+        // Coordenadas absolutas del caller → normalizadas para las
+        // rutinas compartidas (misma ruta que el modo directo).
+        PasoDibujo paso;
+        paso.x = x / s.width;  paso.y = y / s.height;
+        paso.w = w / s.width;  paso.h = h / s.height;
+        paso.texto  = texto;
+        paso.estilo = estilo;
+        rendirecto::DibujarPasoEnRT(rt_.Get(), dw_.Get(), paso, &formatos_,
+                                    s.width, s.height);
     }
 
     void DibujarImagen(const std::wstring& ruta, float x, float y, float w, float h,
-                        AjusteImagen) override {
-        // TODO(P0): usar WIC para cargar bitmap, crear ID2D1Bitmap, dibujar.
-        (void)ruta; (void)x; (void)y; (void)w; (void)h;
+                        AjusteImagen ajuste) override {
+        if (!rt_) return;
+        rendirecto::DibujarImagenEnRT(rt_.Get(), wic_.Get(), ruta, ajuste,
+                                      x, y, w, h);
     }
 
 private:
@@ -128,6 +155,8 @@ private:
     ComPtr<ID2D1Factory> d2d_;
     ComPtr<ID2D1HwndRenderTarget> rt_;
     ComPtr<IDWriteFactory> dw_;
+    ComPtr<IWICImagingFactory> wic_;
+    rendirecto::CacheFormatos formatos_;
 };
 
 std::unique_ptr<Renderer> CrearRendererDirect2D() {

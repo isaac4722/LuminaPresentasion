@@ -97,6 +97,7 @@ add_executable(FusionCore WIN32
     ${FUSION_SRC_DIR}/core/TriggerEngine.cpp
     ${FUSION_SRC_DIR}/core/Diagnostic.cpp
     ${FUSION_SRC_DIR}/core/HerenciaTemas.cpp
+    ${FUSION_SRC_DIR}/core/RenderDirecto.cpp
     ${FUSION_SRC_DIR}/core/PlanPptx.cpp
     ${FUSION_SRC_DIR}/core/PlanExport.cpp
     ${FUSION_SRC_DIR}/core/PptxDirecto.cpp
@@ -145,6 +146,7 @@ if(FUSION_BUILD_TESTS)
         ${CMAKE_SOURCE_DIR}/../../tests/native/test_citas.cpp
         ${CMAKE_SOURCE_DIR}/../../tests/native/test_sql_script.cpp
         ${CMAKE_SOURCE_DIR}/../../tests/native/test_herencia.cpp
+        ${CMAKE_SOURCE_DIR}/../../tests/native/test_render_directo.cpp
         ${CMAKE_SOURCE_DIR}/../../tests/native/test_planes.cpp
         ${CMAKE_SOURCE_DIR}/../../tests/native/test_pptx_directo.cpp
         ${CMAKE_SOURCE_DIR}/../../tests/native/test_exportadores.cpp
@@ -154,6 +156,7 @@ if(FUSION_BUILD_TESTS)
         ${FUSION_SRC_DIR}/data/SongDatabase.cpp
         ${FUSION_SRC_DIR}/data/BibleDatabase.cpp
         ${FUSION_SRC_DIR}/core/HerenciaTemas.cpp
+        ${FUSION_SRC_DIR}/core/RenderDirecto.cpp
         ${FUSION_SRC_DIR}/core/PlanPptx.cpp
         ${FUSION_SRC_DIR}/core/PlanExport.cpp
         ${FUSION_SRC_DIR}/core/PptxDirecto.cpp
