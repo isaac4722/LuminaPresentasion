@@ -425,3 +425,46 @@ Adenda sesión VII — puesta en verde del empaquetado (CI):
   instaladores dual. Entregables en el run: portable-x86 (13,1 MB),
   portable-x64 (15,1 MB) e instaladores (22,5 MB, dos Setup).
 - El release con los 4 entregables se publica al etiquetar v*.
+
+Sesión VIII — capa Escenario (5.4), rasterizador del modo directo (P1) e
+incrustación de imágenes en exportadores:
+
+- Pieza herencia (5e51880): NivelTema a 5 niveles (Raiz < Plantilla <
+  Escenario < Elemento < Runtime) alineado con la cascada del doc 5.4;
+  Resolver() con 5 capas; CapaEscenario() pliega escenario.fondo
+  (solido/color1) con el bolso inline escenario.tema_escenario (el
+  bolso gana); ahp.v1 parsea/serializa/valida tema_escenario (no-objeto
+  o no-string → error explícito; hex de texto.color/fondo.color1/2 en
+  Validar). Docs: themes.md (5 niveles) + format_ahp_v1.md.
+- Pieza render directo (dbc2b67 + fixes 00cd7dd, 9225c00):
+  RenderDirecto::ConstruirPlan (bandas normalizadas, slots de párrafos,
+  max_parrafos con aviso, aspecto saneado), Utf8AUtf16 propio (pares
+  suplentes, U+FFFD por subparte máxima con resync, truncado seguro),
+  DibujarPlan portable, rutinas D2D compartidas
+  (RenderDirectoInterno.h: fondo sólido/gradiente/imagen con WIC,
+  texto real con DirectWrite y cache de formatos) y
+  RasterizadorDirectoD2D offscreen (WIC software → RGBA recto). El
+  RendererDirect2D deja de ser stub: pantalla y rasterizador usan la
+  MISMA ruta de pintado. Docs: render_directo.md.
+- Pieza exportadores (a0f6f86): ZipInterno.h comparte Inflar,
+  ZlibAlmacenado y Adler32 (una copia); ImagenesExport.h con
+  decodificador PNG propio (profundidad 8, gris/RGB/RGBA aplanada,
+  filtros 0-4, CRC big-endian) y dimensiones JPEG por SOF. PPTX
+  incrusta .png/.jpg/.jpeg (ppt/media/imageN + p:pic + rel + content
+  types) y via el fondo del Escenario como p:bg; PDF incrusta JPEG
+  (DCTDecode directo) y PNG (FlateDecode RGB) con XObjects por página
+  y numeración dinámica; fondos como rg 0 0 960 540 re f.
+- Bugs de CI depurados: (1) DibujarImagenEnRT definida en namespace
+  anónimo creaba una sobrecarga distinta a la declarada (C2668);
+  (2) std::min con int/unsigned no deduce T (C2672); (3) fusion_tests
+  sin d2d1/dwrite/ole32 al compilar la mitad D2D (LNK2019). En el
+  decodificador PNG, las longitudes/CRC se leían little-endian por
+  herencia del ZIP (el PNG es big-endian): hallado con driver de
+  depuración antes del push.
+- Verificación local: 115 casos / 934 aserciones (gcc-14, -Wall
+  -Wextra). RUN 36417481543 (punta 9225c00): 10/10 jobs VERDE —
+  núcleo x86+x64, qt_shell x86+x64, gestionada, launcher, gate,
+  portable x86+x64 e instaladores dual.
+- Pendiente siguiente sesión: consumir RasterizadorDirectoD2D desde el
+  shell para proyección del modo directo (Engine en vivo), letterbox
+  por aspecto, imágenes/formas internas del pptx, fondo tipo imagen.
