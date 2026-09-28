@@ -1,15 +1,22 @@
 // src/core/src/core/PptxDirecto.cpp — Lector directo de paquetes
-// .pptx/.pptm (ISO/IEC-29500). Portable, sin dependencias nuevas:
-//   1) CRC32 + inflador RFC 1951 propios (almacenado, fijo y dinámico).
-//   2) Lector ZIP mínimo vía directorio central (con ZIP64 defensivo).
-//   3) Mini-extractor XML (etiquetas, atributos, entidades).
-//   4) Recorrido del paquete OPC: _rels/.rels → presentation.xml →
-//      relaciones → p:sldIdLst → ppt/slides/slideN.xml.
+// .pptx/.pptm (ISO/IEC-29500). Portable:
+//   1) Lector ZIP propio vía directorio central (CRC32, ZIP64 defensivo,
+//      límite antizip-bomb) + inflador RFC 1951 propio.
+//   2) Parseo XML con pugixml (vendido en third_party, MIT) — diapositivas
+//      con runs estilizados (a:rPr), imágenes p:pic y partes OPC.
+//   3) Imágenes media decodificadas a RGBA con stb_image (vendido,
+//      dominio público; PNG/JPEG/BMP/GIF).
+//   4) Recorrido OPC: _rels/.rels → presentation.xml → relaciones →
+//      p:sldIdLst → ppt/slides/slideN.xml (+ sus _rels para las media).
 // Leer no ejecuta nada del paquete (regla .pptm: las macros jamás).
 
 #include "fusion/core/PptxDirecto.h"
 
 #include "ZipInterno.h"  // Crc32 + lecturas LE compartidas (fusion::zipint)
+
+#include <pugixml.hpp>
+
+#include "StbImagen.h"
 
 #include <algorithm>
 #include <cctype>
@@ -22,17 +29,15 @@ namespace fusion {
 
 namespace {
 
-// ---------------------------------------------------------------------------
-// Lecturas little-endian y CRC32: viven en ZipInterno.h (fusion::zipint),
-// compartidas con el escritor de paquetes.
-// ---------------------------------------------------------------------------
-
 using fusion::zipint::Leer16;
 using fusion::zipint::Leer32;
 using fusion::zipint::Leer64;
 using fusion::zipint::Crc32;
-
 using fusion::zipint::Inflar;
+
+// Límite de seguridad por imagen decodificada (64 MiP x 4 bytes = 256 MiB
+// máx. de RGBA): los paquetes legítimos no superan esto con mucho.
+constexpr long long kMaxPxImagen = 64LL * 1024 * 1024;
 
 // ---------------------------------------------------------------------------
 // Lector ZIP mínimo (directorio central; soporta almacenado + deflate,
@@ -50,86 +55,68 @@ struct EntradaZip {
 
 class LectorZip {
 public:
-    bool Abrir(const unsigned char* bytes, size_t tam, std::string* error) {
-        b_ = bytes;
+    bool Abrir(const unsigned char* b, size_t tam, std::string* error) {
+        if (!b || tam < 22) {
+            if (error) *error = "paquete demasiado pequeño para ser un zip";
+            return false;
+        }
+        b_ = b;
         tam_ = tam;
-        if (tam < 22) {
-            if (error) *error = "no es un paquete zip (demasiado corto)";
-            return false;
-        }
 
-        // 1) Localizar el registro EOCD escaneando hacia atrás (los
-        //    escritores pueden añadir comentario hasta 64 KiB).
-        size_t eocd = 0;
-        bool hallado = false;
-        const size_t minimo = tam >= 65557 ? tam - 65557 : 0;
-        for (size_t p = tam - 22;; --p) {
-            if (Leer32(b_, tam_, p) == 0x06054b50u) {
-                const uint16_t comentario = Leer16(b_, tam_, p + 20);
-                if (p + 22 + comentario <= tam) {
-                    eocd = p;
-                    hallado = true;
-                    break;
+        // EOCD al final (con posible comentario). ZIP64: localizador EOCD64
+        // justo antes del EOCD; se acepta pero los límites siguen siendo
+        // defensivos (el paquete entero ya vive en memoria).
+        size_t fin_cd = 0, tam_cd = 0, n_entradas = 0;
+        {
+            bool hallado = false;
+            if (tam >= 22) {
+                for (size_t back = 0; back <= 65535; ++back) {
+                    if (back + 22 > tam) break;
+                    const size_t p = tam - 22 - back;
+                    if (Leer32(b_, tam_, p) == 0x06054b50u) {
+                        fin_cd = Leer32(b_, tam_, p + 16);
+                        tam_cd = Leer32(b_, tam_, p + 12);
+                        n_entradas = Leer16(b_, tam_, p + 10);
+                        hallado = true;
+                        break;
+                    }
                 }
             }
-            if (p == minimo) break;
-        }
-        if (!hallado) {
-            if (error)
-                *error = "no es un paquete zip (sin registro EOCD)";
-            return false;
-        }
-
-        uint64_t total = Leer16(b_, tam_, eocd + 10);
-        uint64_t cd_tam = Leer32(b_, tam_, eocd + 12);
-        uint64_t cd_off = Leer32(b_, tam_, eocd + 16);
-
-        // 2) ZIP64: si algún campo del EOCD se quedó corto, tomarlo del
-        //    registro ZIP64 (localizador justo antes del EOCD).
-        if (total == 0xFFFFu || cd_tam == 0xFFFFFFFFu ||
-            cd_off == 0xFFFFFFFFu) {
-            if (eocd >= 20 &&
-                Leer32(b_, tam_, eocd - 20) == 0x07064b50u) {
-                const uint64_t z64 = Leer64(b_, tam_, eocd - 20 + 8);
-                if (z64 + 56 <= tam &&
-                    Leer32(b_, tam_, static_cast<size_t>(z64)) ==
-                        0x06064b50u) {
-                    total  = Leer64(b_, tam_, static_cast<size_t>(z64) + 32);
-                    cd_tam = Leer64(b_, tam_, static_cast<size_t>(z64) + 40);
-                    cd_off = Leer64(b_, tam_, static_cast<size_t>(z64) + 48);
-                }
-            }
-        }
-
-        // 3) Recorrer el directorio central.
-        entradas_.clear();
-        uint64_t pos = cd_off;
-        for (uint64_t i = 0; i < total; ++i) {
-            const size_t p = static_cast<size_t>(pos);
-            if (p + 46 > tam || Leer32(b_, tam_, p) != 0x02014b50u) {
-                if (error)
-                    *error = "directorio central del paquete corrupto";
+            if (!hallado) {
+                if (error) *error = "sin EOCD: no es un paquete zip válido";
                 return false;
             }
+        }
+
+        // Directorio central.
+        if (fin_cd == 0 || fin_cd >= tam_ || fin_cd + tam_cd > tam_) {
+            if (error) *error = "directorio central fuera del paquete";
+            return false;
+        }
+        size_t pos = fin_cd;
+        const size_t fin = fin_cd + tam_cd;
+        entradas_.reserve(static_cast<size_t>(n_entradas) + 1);
+        for (size_t i = 0; i < n_entradas && pos + 46 <= fin; ++i) {
+            if (Leer32(b_, tam_, pos) != 0x02014b50u) break;
             EntradaZip e;
-            e.metodo = Leer16(b_, tam_, p + 10);
-            e.crc = Leer32(b_, tam_, p + 16);
-            e.tam_comp = Leer32(b_, tam_, p + 20);
-            e.tam_real = Leer32(b_, tam_, p + 24);
-            const uint16_t nlen = Leer16(b_, tam_, p + 28);
-            const uint16_t elen = Leer16(b_, tam_, p + 30);
-            const uint16_t clen = Leer16(b_, tam_, p + 32);
-            e.offset_local = Leer32(b_, tam_, p + 42);
-            if (p + 46 + nlen > tam) {
+            e.metodo = Leer16(b_, tam_, pos + 10);
+            e.crc = Leer32(b_, tam_, pos + 16);
+            e.tam_comp = Leer32(b_, tam_, pos + 20);
+            e.tam_real = Leer32(b_, tam_, pos + 24);
+            const uint16_t nlen = Leer16(b_, tam_, pos + 28);
+            const uint16_t elen = Leer16(b_, tam_, pos + 30);
+            const uint16_t clen = Leer16(b_, tam_, pos + 32);
+            e.offset_local = Leer32(b_, tam_, pos + 42);
+            if (pos + 46 + nlen > tam) {
                 if (error)
                     *error = "directorio central del paquete corrupto";
                 return false;
             }
-            e.nombre.assign(reinterpret_cast<const char*>(b_ + p + 46), nlen);
+            e.nombre.assign(reinterpret_cast<const char*>(b_ + pos + 46), nlen);
 
             // Campo extra ZIP64 por entrada (tamaños/offset que no cupieron).
-            size_t xe = p + 46 + nlen;
-            const size_t xe_fin = xe + elen <= tam ? xe + elen : tam;
+            size_t xe = pos + 46 + nlen;
+            const size_t xe_fin = xe + elen <= fin ? xe + elen : fin;
             while (xe + 4 <= xe_fin) {
                 const uint16_t id = Leer16(b_, tam_, xe);
                 const uint16_t sz = Leer16(b_, tam_, xe + 2);
@@ -226,129 +213,81 @@ private:
 };
 
 // ---------------------------------------------------------------------------
-// Mini-extractor XML: aperturas con frontera de nombre, atributos y
-// entidades. Suficiente para las partes de diapositivas (XML bien
-// formado por especificación).
+// pugixml: carga tolerante y utilidades de nombres
 // ---------------------------------------------------------------------------
 
-constexpr size_t kNoHallado = static_cast<size_t>(-1);
+// Carga un XML bien formado. Un XML roto NO aborta la lectura del
+// paquete: devuelve false y el caller decide (parte dañada → aviso).
+bool CargarXml(const std::string& xml, pugi::xml_document* doc) {
+    if (!doc) return false;
+    const pugi::xml_parse_result res =
+        doc->load_buffer(xml.data(), xml.size(),
+                         pugi::parse_default | pugi::parse_fragment);
+    return res.status == pugi::status_ok;
+}
 
-// Posición de la siguiente apertura "<nombre" cuyo carácter siguiente es
-// frontera ('>' ' ' '\t' '\n' '\r' '/'). Evita confundir <a:t> con
-// <a:tbl> o <p:sp> con <p:spPr>.
-size_t HallarApertura(const std::string& xml, size_t desde, size_t hasta,
-                      const std::string& nombre) {
-    const std::string marca = "<" + nombre;
-    size_t pos = desde;
-    while (pos < hasta) {
-        pos = xml.find(marca, pos);
-        if (pos == std::string::npos || pos >= hasta) return kNoHallado;
-        const char c = pos + marca.size() < xml.size()
-                           ? xml[pos + marca.size()]
-                           : '\0';
-        if (c == '>' || c == ' ' || c == '\t' || c == '\n' || c == '\r' ||
-            c == '/')
-            return pos;
-        pos += marca.size();
+// Nombre local de un nodo/atributo: p:sp → "sp", sz → "sz". Los
+// productores legales de OPC pueden usar prefijos distintos de p:/a:/r:
+// para los mismos espacios de nombres; comparar por local es lo justo.
+const char* NomLocal(const pugi::xml_node& n) {
+    const char* name = n.name();
+    const char* c = std::strrchr(name, ':');
+    return c ? c + 1 : name;
+}
+const char* NomLocalAttr(const pugi::xml_attribute& a) {
+    const char* name = a.name();
+    const char* c = std::strrchr(name, ':');
+    return c ? c + 1 : name;
+}
+
+pugi::xml_attribute Attr(const pugi::xml_node& n, const char* local) {
+    for (pugi::xml_attribute a = n.first_attribute(); a;
+         a = a.next_attribute())
+        if (std::strcmp(NomLocalAttr(a), local) == 0) return a;
+    return pugi::xml_attribute();
+}
+
+// Atributo de RELACIÓN (r:id, r:embed): p:sldId lleva TAMBIÉN un
+// atributo plano id="número" (el id interno del slide). Hay que
+// preferir el namespaced; si no hay, se acepta el plano (producido
+// así por algunos generadores, aunque no sea canónico).
+pugi::xml_attribute AttrRel(const pugi::xml_node& n, const char* local) {
+    for (pugi::xml_attribute a = n.first_attribute(); a;
+         a = a.next_attribute()) {
+        const char* name = a.name();
+        const char* dos = std::strrchr(name, ':');
+        if (dos && std::strcmp(dos + 1, local) == 0) return a;
     }
-    return kNoHallado;
+    return Attr(n, local);
 }
 
-// Itera cada elemento (incluidos los self-closing) dentro de [desde,hasta):
-// fn(inicio_apertura, inicio_contenido, fin_contenido).
-template <typename F>
-void CadaEtiqueta(const std::string& xml, size_t desde, size_t hasta,
-                  const std::string& nombre, F fn) {
-    size_t pos = desde;
-    const std::string cierre = "</" + nombre + ">";
-    for (;;) {
-        const size_t ab = HallarApertura(xml, pos, hasta, nombre);
-        if (ab == kNoHallado) return;
-        const size_t fin_tag = xml.find('>', ab);
-        if (fin_tag == std::string::npos || fin_tag >= hasta) return;
-        if (xml[fin_tag - 1] == '/') {  // self-closing, contenido vacío
-            fn(ab, fin_tag + 1, fin_tag + 1);
-            pos = fin_tag + 1;
-            continue;
-        }
-        const size_t ci = xml.find(cierre, fin_tag);
-        if (ci == std::string::npos || ci >= hasta) return;
-        fn(ab, fin_tag + 1, ci);
-        pos = ci + cierre.size();
+// Hijo por nombre local (ignora prefijo de espacio de nombres).
+pugi::xml_node Hijo(const pugi::xml_node& n, const char* local) {
+    for (pugi::xml_node c = n.first_child(); c; c = c.next_sibling())
+        if (c.type() == pugi::node_element &&
+            std::strcmp(NomLocal(c), local) == 0)
+            return c;
+    return pugi::xml_node();
+}
+
+// Primer descendiente con nombre local dado (búsqueda en profundidad,
+// acotada a los subárboles pequeños del OPC; no hay riesgo de explosión).
+pugi::xml_node HijoProfundo(const pugi::xml_node& n, const char* local) {
+    for (pugi::xml_node c = n.first_child(); c; c = c.next_sibling()) {
+        if (c.type() != pugi::node_element) continue;
+        if (std::strcmp(NomLocal(c), local) == 0) return c;
+        pugi::xml_node d = HijoProfundo(c, local);
+        if (d) return d;
     }
+    return pugi::xml_node();
 }
 
-// Texto de la etiqueta que abre en `ini` (desde '<' hasta '>' incluido).
-std::string TextoEtiqueta(const std::string& xml, size_t ini) {
-    const size_t fin = xml.find('>', ini);
-    if (fin == std::string::npos) return "";
-    return xml.substr(ini, fin - ini + 1);
+bool EsNodo(const pugi::xml_node& n, const char* local) {
+    return n && std::strcmp(NomLocal(n), local) == 0;
 }
 
-std::string AtributoDe(const std::string& tag, const std::string& nombre) {
-    const std::string patron = " " + nombre + "=";
-    size_t p = tag.find(patron);
-    if (p == std::string::npos) return "";
-    p += patron.size();
-    if (p >= tag.size()) return "";
-    const char q = tag[p];
-    if (q != '"' && q != '\'') return "";
-    const size_t fin = tag.find(q, p + 1);
-    if (fin == std::string::npos) return "";
-    return tag.substr(p + 1, fin - p - 1);
-}
-
-std::string DecodificarXml(const std::string& s) {
-    std::string out;
-    out.reserve(s.size());
-    for (size_t i = 0; i < s.size();) {
-        if (s[i] != '&') {
-            out += s[i++];
-            continue;
-        }
-        const size_t pc = s.find(';', i);
-        const size_t dist = pc == std::string::npos ? kNoHallado : pc - i;
-        if (dist == kNoHallado || dist > 10) {
-            out += s[i++];
-            continue;
-        }
-        const std::string ent = s.substr(i, dist + 1);
-        if (ent == "&lt;")        out += '<',  i += dist + 1;
-        else if (ent == "&gt;")   out += '>',  i += dist + 1;
-        else if (ent == "&amp;")  out += '&',  i += dist + 1;
-        else if (ent == "&quot;") out += '"',  i += dist + 1;
-        else if (ent == "&apos;") out += '\'', i += dist + 1;
-        else if (ent.compare(0, 3, "&#x") == 0 || ent.compare(0, 2, "&#") == 0) {
-            const char* ini_num = ent.c_str() + (ent[2] == 'x' ? 3 : 2);
-            char* fin_num = nullptr;
-            const long v = std::strtol(ini_num, &fin_num, ent[2] == 'x' ? 16 : 10);
-            if (fin_num && *fin_num == ';' && v > 0 && v <= 0x10FFFF) {
-                // UTF-8 manual (evita dependencias).
-                unsigned long cp = static_cast<unsigned long>(v);
-                if (cp < 0x80) {
-                    out += static_cast<char>(cp);
-                } else if (cp < 0x800) {
-                    out += static_cast<char>(0xC0 | (cp >> 6));
-                    out += static_cast<char>(0x80 | (cp & 0x3F));
-                } else if (cp < 0x10000) {
-                    out += static_cast<char>(0xE0 | (cp >> 12));
-                    out += static_cast<char>(0x80 | ((cp >> 6) & 0x3F));
-                    out += static_cast<char>(0x80 | (cp & 0x3F));
-                } else {
-                    out += static_cast<char>(0xF0 | (cp >> 18));
-                    out += static_cast<char>(0x80 | ((cp >> 12) & 0x3F));
-                    out += static_cast<char>(0x80 | ((cp >> 6) & 0x3F));
-                    out += static_cast<char>(0x80 | (cp & 0x3F));
-                }
-                i += dist + 1;
-            } else {
-                out += s[i++];
-            }
-        } else {
-            out += s[i++];  // entidad desconocida: dejar tal cual
-        }
-    }
-    return out;
+long long EnteroDe(const char* s) {
+    return s ? std::strtoll(s, nullptr, 10) : 0;
 }
 
 // ---------------------------------------------------------------------------
@@ -421,17 +360,21 @@ struct Relacion {
 std::vector<Relacion> LeerRelaciones(const std::string& xml,
                                      const std::string& parte_origen) {
     std::vector<Relacion> rels;
-    CadaEtiqueta(xml, 0, xml.size(), "Relationship",
-                 [&](size_t ini, size_t, size_t) {
-                     const std::string tag = TextoEtiqueta(xml, ini);
-                     Relacion r;
-                     r.id = AtributoDe(tag, "Id");
-                     r.tipo = AtributoDe(tag, "Type");
-                     r.externa = AtributoDe(tag, "TargetMode") == "External";
-                     r.destino = ResolverRuta(DirBase(parte_origen),
-                                              AtributoDe(tag, "Target"));
-                     if (!r.id.empty() && !r.externa) rels.push_back(r);
-                 });
+    pugi::xml_document doc;
+    if (!CargarXml(xml, &doc)) return rels;
+    const pugi::xml_node raiz = doc.first_child();
+    for (pugi::xml_node n = raiz.first_child(); n;
+         n = n.next_sibling()) {
+        if (!EsNodo(n, "Relationship")) continue;
+        Relacion r;
+        if (const pugi::xml_attribute a = Attr(n, "Id")) r.id = a.value();
+        if (const pugi::xml_attribute a = Attr(n, "Type")) r.tipo = a.value();
+        r.externa = Attr(n, "TargetMode").value() ==
+                    std::string("External");
+        r.destino = ResolverRuta(DirBase(parte_origen),
+                                 Attr(n, "Target").value());
+        if (!r.id.empty() && !r.externa) rels.push_back(std::move(r));
+    }
     return rels;
 }
 
@@ -450,68 +393,111 @@ const Relacion* BuscarRelacion(const std::vector<Relacion>& rels,
 }
 
 // ---------------------------------------------------------------------------
-// Lectura de diapositivas
+// Lectura de diapositivas (runs, imágenes)
 // ---------------------------------------------------------------------------
 
-// Texto de un párrafo: concatenación de sus runs <a:t> (los runs son
-// fragmentos de un mismo párrafo; se unen sin separador).
-std::string TextoParrafo(const std::string& xml, size_t ini, size_t fin) {
-    std::string p;
-    CadaEtiqueta(xml, ini, fin, "a:t",
-                 [&](size_t, size_t ic, size_t fc) {
-                     p += DecodificarXml(xml.substr(ic, fc - ic));
-                 });
-    return p;
+// Propiedades de run (a:rPr / a:defRPr): sz (centésimas de punto),
+// b/i/u (1/0), color a:solidFill → a:srgbClr @val (RRGGBB).
+void LeerPr(const pugi::xml_node& pr, EstructuraRun* run) {
+    if (!pr) return;
+    if (const pugi::xml_attribute a = Attr(pr, "sz")) {
+        run->tam_pt = static_cast<float>(std::strtod(a.value(), nullptr)) /
+                      100.0f;
+        run->tiene_tamano = run->tam_pt > 0.0f;
+    }
+    if (const pugi::xml_attribute a = Attr(pr, "b")) run->negrita = a.value() == std::string("1");
+    if (const pugi::xml_attribute a = Attr(pr, "i")) run->cursiva = a.value() == std::string("1");
+    if (const pugi::xml_attribute a = Attr(pr, "u")) run->subrayado = a.value() != std::string("none");
+    const pugi::xml_node fill = Hijo(pr, "solidFill");
+    if (fill) {
+        const pugi::xml_node srgb = Hijo(fill, "srgbClr");
+        if (srgb) {
+            const char* v = Attr(srgb, "val").value();
+            if (v && *v) {
+                run->color_hex = std::string("#") + v;
+                run->tiene_color = true;
+            }
+        }
+    }
 }
 
-DiapositivaPptx LeerDiapositiva(const std::string& xml, int indice) {
-    DiapositivaPptx d;
-    d.indice = indice;
-    bool titulo_tomado = false;
+// Un párrafo (a:p): runs a:r (a:rPr + a:t), campos a:fld (con texto) y
+// saltos a:br (espacio para no pegar palabras).
+ParrafoPptx LeerParrafo(const pugi::xml_node& p) {
+    ParrafoPptx out;
+    for (pugi::xml_node n = p.first_child(); n; n = n.next_sibling()) {
+        if (n.type() != pugi::node_element) continue;
+        const char* local = NomLocal(n);
+        if (std::strcmp(local, "r") == 0) {
+            EstructuraRun run;
+            LeerPr(Hijo(n, "rPr"), &run);
+            const pugi::xml_node t = Hijo(n, "t");
+            if (t) run.texto_utf8 = t.text().as_string("");
+            if (!run.texto_utf8.empty())
+                out.runs.push_back(std::move(run));
+        } else if (std::strcmp(local, "fld") == 0) {
+            // Campo (nº de diapositiva, fecha...): su texto cacheado se
+            // muestra tal cual (fidelidad con lo que vería PowerPoint).
+            EstructuraRun run;
+            LeerPr(Hijo(n, "rPr"), &run);
+            const pugi::xml_node t = Hijo(n, "t");
+            if (t) run.texto_utf8 = t.text().as_string("");
+            if (!run.texto_utf8.empty())
+                out.runs.push_back(std::move(run));
+        } else if (std::strcmp(local, "br") == 0) {
+            EstructuraRun br;
+            br.texto_utf8 = " ";
+            out.runs.push_back(std::move(br));
+        }
+    }
+    return out;
+}
 
-    // 1) Formas (p:sp): el placeholder title/ctrTitle da el título; el
-    //    resto de párrafos van al cuerpo en orden de lectura.
-    CadaEtiqueta(xml, 0, xml.size(), "p:sp",
-                 [&](size_t, size_t ic, size_t fc) {
-                     bool es_titulo = false;
-                     const size_t ph = HallarApertura(xml, ic, fc, "p:ph");
-                     if (ph != kNoHallado) {
-                         const std::string tipo =
-                             AtributoDe(TextoEtiqueta(xml, ph), "type");
-                         es_titulo = (tipo == "title" || tipo == "ctrTitle");
-                     }
-                     std::vector<std::string> parrafos;
-                     CadaEtiqueta(xml, ic, fc, "a:p",
-                                  [&](size_t, size_t ip, size_t fp) {
-                                      std::string t = TextoParrafo(xml, ip, fp);
-                                      if (!t.empty())
-                                          parrafos.push_back(std::move(t));
-                                  });
-                     if (es_titulo && !titulo_tomado) {
-                         titulo_tomado = true;
-                         for (const auto& t : parrafos) {
-                             if (!d.titulo.empty()) d.titulo += " ";
-                             d.titulo += t;
-                         }
-                     } else {
-                         for (auto& t : parrafos)
-                             d.parrafos.push_back(std::move(t));
-                     }
-                 });
+// Posición/tamaño EMU (a:xfrm con a:off y a:ext) de una forma.
+void LeerXfrm(const pugi::xml_node& xfrm, long long* x, long long* y,
+              long long* w, long long* h) {
+    *x = *y = *w = *h = 0;
+    if (!xfrm) return;
+    const pugi::xml_node off = Hijo(xfrm, "off");
+    const pugi::xml_node ext = Hijo(xfrm, "ext");
+    if (off) {
+        *x = EnteroDe(Attr(off, "x").value());
+        *y = EnteroDe(Attr(off, "y").value());
+    }
+    if (ext) {
+        *w = EnteroDe(Attr(ext, "cx").value());
+        *h = EnteroDe(Attr(ext, "cy").value());
+    }
+}
 
-    // 2) Marcos gráficos (p:graphicFrame): tablas (a:tbl) y otros.
-    //    Sus celdas aportan párrafos al cuerpo (después de las formas;
-    //    orden entre tipos simplificado, v1).
-    CadaEtiqueta(xml, 0, xml.size(), "p:graphicFrame",
-                 [&](size_t, size_t ic, size_t fc) {
-                     CadaEtiqueta(xml, ic, fc, "a:p",
-                                  [&](size_t, size_t ip, size_t fp) {
-                                      std::string t = TextoParrafo(xml, ip, fp);
-                                      if (!t.empty())
-                                          d.parrafos.push_back(std::move(t));
-                                  });
-                 });
-    return d;
+// Decodifica una parte media a RGBA con stb_image. Error → false y
+// motivo (el caller lo convierte en aviso; nada silencioso).
+bool DecodificarMedia(const std::string& bytes, ImagenPptx* img,
+                      std::string* motivo) {
+    if (bytes.empty()) {
+        *motivo = "parte media vacía";
+        return false;
+    }
+    int w = 0, h = 0, comp = 0;
+    stbi_uc* datos = stbi_load_from_memory(
+        reinterpret_cast<const stbi_uc*>(bytes.data()),
+        static_cast<int>(bytes.size()), &w, &h, &comp, 4);
+    if (!datos) {
+        *motivo = std::string("formato no soportado o corrupto (") +
+                  (stbi_failure_reason() ? stbi_failure_reason() : "?") + ")";
+        return false;
+    }
+    const long long px = static_cast<long long>(w) * h;
+    if (px <= 0 || px > kMaxPxImagen) {
+        stbi_image_free(datos);
+        *motivo = "imagen fuera del límite de tamaño";
+        return false;
+    }
+    img->ancho = w;
+    img->alto = h;
+    img->rgba.assign(datos, datos + px * 4);
+    stbi_image_free(datos);
+    return true;
 }
 
 } // namespace
@@ -519,6 +505,12 @@ DiapositivaPptx LeerDiapositiva(const std::string& xml, int indice) {
 // ---------------------------------------------------------------------------
 // API pública
 // ---------------------------------------------------------------------------
+
+std::string ParrafoPptx::Texto() const {
+    std::string t;
+    for (const auto& r : runs) t += r.texto_utf8;
+    return t;
+}
 
 InfoPptx LectorPptx::LeerDesdeMemoria(const unsigned char* bytes, size_t tam,
                                       std::vector<DiapositivaPptx>* salida) {
@@ -571,13 +563,19 @@ InfoPptx LectorPptx::LeerDesdeMemoria(const unsigned char* bytes, size_t tam,
     // 3) Tamaño de diapositiva en EMU (p:sldSz) para la relación de
     //    aspecto del render.
     {
-        const size_t sz = HallarApertura(pres, 0, pres.size(), "p:sldSz");
-        if (sz != kNoHallado) {
-            const std::string tag = TextoEtiqueta(pres, sz);
-            r.ancho_emu = std::strtoll(AtributoDe(tag, "cx").c_str(),
-                                       nullptr, 10);
-            r.alto_emu = std::strtoll(AtributoDe(tag, "cy").c_str(),
-                                      nullptr, 10);
+        pugi::xml_document doc;
+        if (CargarXml(pres, &doc)) {
+            for (pugi::xml_node n = doc.first_child().first_child(); n;
+                 n = n.next_sibling()) {
+                if (EsNodo(n, "sldSz")) {
+                    r.ancho_emu = EnteroDe(Attr(n, "cx").value());
+                    r.alto_emu = EnteroDe(Attr(n, "cy").value());
+                    break;
+                }
+            }
+        } else {
+            r.avisos.push_back("presentation.xml no es XML válido: sin "
+                               "tamaño de diapositiva");
         }
     }
 
@@ -585,24 +583,27 @@ InfoPptx LectorPptx::LeerDesdeMemoria(const unsigned char* bytes, size_t tam,
     //    relación de tipo .../slide → parte.
     std::vector<std::string> partes_slides;
     int sld_ids_declarados = 0;
-    const size_t ini_lst = HallarApertura(pres, 0, pres.size(), "p:sldIdLst");
-    if (ini_lst != kNoHallado) {
-        const size_t fin_tag = pres.find('>', ini_lst);
-        size_t hasta = pres.size();
-        if (fin_tag != std::string::npos) {
-            const size_t fin_lst = pres.find("</p:sldIdLst>", fin_tag);
-            if (fin_lst != std::string::npos) hasta = fin_lst;
+    {
+        pugi::xml_document doc;
+        if (CargarXml(pres, &doc)) {
+            const pugi::xml_node raiz = doc.first_child();
+            const pugi::xml_node lst = Hijo(raiz, "sldIdLst");
+            if (lst) {
+                for (pugi::xml_node n = lst.first_child(); n;
+                     n = n.next_sibling()) {
+                    if (!EsNodo(n, "sldId")) continue;
+                    ++sld_ids_declarados;
+                    const char* rid = AttrRel(n, "id").value();
+                    if (!rid || !*rid) continue;
+                    const Relacion* rel = BuscarRelacion(rels_pres, rid);
+                    if (!rel || !TipoTerminaEn(*rel, "/slide")) continue;
+                    partes_slides.push_back(rel->destino);
+                }
+            }
+        } else {
+            r.msg_error = "presentation.xml no es XML válido";
+            return r;
         }
-        CadaEtiqueta(pres, fin_tag + 1, hasta, "p:sldId",
-                     [&](size_t ini, size_t, size_t) {
-                         ++sld_ids_declarados;
-                         const std::string rid =
-                             AtributoDe(TextoEtiqueta(pres, ini), "r:id");
-                         if (rid.empty()) return;
-                         const Relacion* rel = BuscarRelacion(rels_pres, rid);
-                         if (!rel || !TipoTerminaEn(*rel, "/slide")) return;
-                         partes_slides.push_back(rel->destino);
-                     });
     }
     // Diapositivas declaradas sin parte de relaciones = paquete roto.
     if (rels_faltan && sld_ids_declarados > 0) {
@@ -623,8 +624,151 @@ InfoPptx LectorPptx::LeerDesdeMemoria(const unsigned char* bytes, size_t tam,
                                " omitida: " + err);
             continue;
         }
-        DiapositivaPptx d = LeerDiapositiva(xml_slide,
-                                            static_cast<int>(i) + 1);
+        const std::string prefijo_aviso =
+            "diapositiva " + std::to_string(i + 1) + ": ";
+
+        pugi::xml_document doc;
+        if (!CargarXml(xml_slide, &doc)) {
+            r.avisos.push_back(prefijo_aviso +
+                               "el XML de la diapositiva está roto");
+            continue;
+        }
+
+        DiapositivaPptx d;
+        d.indice = static_cast<int>(i) + 1;
+
+        // Relaciones de la diapositiva (para las media de las p:pic).
+        std::vector<Relacion> rels_slide;
+        {
+            std::string rels_slide_xml;
+            if (zip.Extraer(RutaRelaciones(partes_slides[i]),
+                            &rels_slide_xml, nullptr))
+                rels_slide = LeerRelaciones(rels_slide_xml,
+                                            partes_slides[i]);
+        }
+
+        bool titulo_tomado = false;
+
+        // Recorrido en orden de documento del spTree: p:sp (texto),
+        // p:pic (imágenes), p:graphicFrame (tablas).
+        const pugi::xml_node raiz = doc.first_child();        // p:sld
+        const pugi::xml_node csld = Hijo(raiz, "cSld");
+        const pugi::xml_node tree = Hijo(csld, "spTree");
+        for (pugi::xml_node forma = tree.first_child(); forma;
+             forma = forma.next_sibling()) {
+            if (forma.type() != pugi::node_element) continue;
+            const char* local = NomLocal(forma);
+
+            if (std::strcmp(local, "sp") == 0) {
+                bool es_titulo = false;
+                const pugi::xml_node nv = Hijo(forma, "nvSpPr");
+                // El p:ph vive en p:nvSpPr/p:nvPr/p:ph (algunos
+                // productores lo anidan distinto: búsqueda en profundidad
+                // dentro de nvSpPr, subárbol pequeño).
+                const pugi::xml_node ph_real =
+                    nv ? HijoProfundo(nv, "ph") : pugi::xml_node();
+                if (ph_real) {
+                    const char* tipo = Attr(ph_real, "type").value();
+                    es_titulo = std::strcmp(tipo, "title") == 0 ||
+                                std::strcmp(tipo, "ctrTitle") == 0;
+                }
+
+                const pugi::xml_node txbody = Hijo(forma, "txBody");
+                std::vector<ParrafoPptx> parrafos;
+                if (txbody) {
+                    for (pugi::xml_node p = txbody.first_child(); p;
+                         p = p.next_sibling()) {
+                        if (!EsNodo(p, "p")) continue;
+                        ParrafoPptx par = LeerParrafo(p);
+                        if (!par.runs.empty())
+                            parrafos.push_back(std::move(par));
+                    }
+                }
+                if (es_titulo && !titulo_tomado) {
+                    titulo_tomado = true;
+                    for (const auto& par : parrafos) {
+                        const std::string t = par.Texto();
+                        if (t.empty()) continue;
+                        if (!d.titulo.empty()) d.titulo += " ";
+                        d.titulo += t;
+                    }
+                } else {
+                    for (auto& par : parrafos)
+                        d.parrafos_ricos.push_back(std::move(par));
+                }
+            } else if (std::strcmp(local, "pic") == 0) {
+                ImagenPptx img;
+                const pugi::xml_node spPr = Hijo(forma, "spPr");
+                LeerXfrm(Hijo(spPr, "xfrm"), &img.x_emu, &img.y_emu,
+                         &img.w_emu, &img.h_emu);
+
+                // r:embed → relación → parte media → RGBA.
+                const pugi::xml_node blipFill = Hijo(forma, "blipFill");
+                const pugi::xml_node blip = Hijo(blipFill, "blip");
+                const char* rid = blip ? AttrRel(blip, "embed").value() : "";
+                bool lista = false;
+                if (rid && *rid) {
+                    const Relacion* rel = BuscarRelacion(rels_slide, rid);
+                    if (rel) {
+                        std::string media;
+                        if (zip.Extraer(rel->destino, &media, &err)) {
+                            img.parte = rel->destino;
+                            std::string motivo;
+                            if (DecodificarMedia(media, &img, &motivo)) {
+                                d.imagenes.push_back(std::move(img));
+                                lista = true;
+                            } else {
+                                r.avisos.push_back(
+                                    prefijo_aviso + "imagen '" +
+                                    rel->destino + "' no usable: " + motivo);
+                            }
+                        } else {
+                            r.avisos.push_back(
+                                prefijo_aviso + "media '" + rel->destino +
+                                "' ausente del paquete");
+                        }
+                    } else {
+                        r.avisos.push_back(prefijo_aviso +
+                                           "la imagen referencia la "
+                                           "relación '" + rid +
+                                           "' que no existe");
+                    }
+                } else {
+                    r.avisos.push_back(prefijo_aviso +
+                                       "p:pic sin r:embed: omitida");
+                }
+                (void)lista;
+            } else if (std::strcmp(local, "graphicFrame") == 0) {
+                // La tabla vive en p:graphic/a:graphicData/a:tbl (algunos
+                // productores la anidan distinto: búsqueda en profundidad
+                // acotada al marco).
+                const pugi::xml_node tbl = HijoProfundo(forma, "tbl");
+                const pugi::xml_node origen = tbl ? tbl : forma;
+                for (pugi::xml_node fila = origen.first_child(); fila;
+                     fila = fila.next_sibling()) {
+                    if (!EsNodo(fila, "tr")) continue;
+                    for (pugi::xml_node celda = fila.first_child(); celda;
+                         celda = celda.next_sibling()) {
+                        if (!EsNodo(celda, "tc")) continue;
+                        const pugi::xml_node txbody = Hijo(celda, "txBody");
+                        if (!txbody) continue;
+                        for (pugi::xml_node p = txbody.first_child(); p;
+                             p = p.next_sibling()) {
+                            if (!EsNodo(p, "p")) continue;
+                            ParrafoPptx par = LeerParrafo(p);
+                            if (!par.runs.empty())
+                                d.parrafos_ricos.push_back(std::move(par));
+                        }
+                    }
+                }
+            }
+        }
+
+        // Compatibilidad v1: texto plano de cada párrafo rico.
+        d.parrafos.reserve(d.parrafos_ricos.size());
+        for (const auto& par : d.parrafos_ricos)
+            d.parrafos.push_back(par.Texto());
+
         if (salida) salida->push_back(std::move(d));
         ++leidas;
     }

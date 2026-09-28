@@ -352,3 +352,205 @@ TEST_CASE("Parte de presentación ausente") {
     CHECK_FALSE(info.ok);
     CHECK(info.msg_error.find("ppt/presentation.xml") != std::string::npos);
 }
+
+// ---------------------------------------------------------------------------
+// v2: runs con estilo (a:rPr) e imágenes internas (p:pic + media)
+// ---------------------------------------------------------------------------
+
+namespace {
+
+// PNG 2x2 RGBA (rojo/verde arriba, azul/amarillo abajo), 77 bytes.
+const unsigned char kPng2x2[] = {
+    0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D,
+    0x49, 0x48, 0x44, 0x52, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x02,
+    0x08, 0x06, 0x00, 0x00, 0x00, 0x72, 0xB6, 0x0D, 0x24, 0x00, 0x00, 0x00,
+    0x14, 0x49, 0x44, 0x41, 0x54, 0x78, 0x9C, 0x63, 0xF8, 0xCF, 0xC0, 0xF0,
+    0x1F, 0x0C, 0x81, 0x34, 0x10, 0x30, 0xFC, 0x07, 0x00, 0x47, 0xCA, 0x08,
+    0xF8, 0x8B, 0x4E, 0x43, 0x85, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4E,
+    0x44, 0xAE, 0x42, 0x60, 0x82};
+
+std::string PackageConDiapositiva(const std::string& xml_slide,
+                                  const std::string& rels_slide,
+                                  const std::vector<std::pair<std::string, std::string>>& extra = {}) {
+    std::vector<ParteZip> partes = {
+        {"[Content_Types].xml",
+         "<?xml version=\"1.0\"?><Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\">"
+         "<Default Extension=\"rels\" ContentType=\"a\"/><Default Extension=\"xml\" ContentType=\"b\"/>"
+         "<Default Extension=\"png\" ContentType=\"image/png\"/>"
+         "<Override PartName=\"/ppt/presentation.xml\" ContentType=\"c\"/></Types>"},
+        {"_rels/.rels",
+         "<?xml version=\"1.0\"?><Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">"
+         "<Relationship Id=\"rDoc\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument\" "
+         "Target=\"ppt/presentation.xml\"/></Relationships>"},
+        {"ppt/presentation.xml",
+         "<?xml version=\"1.0\"?><p:presentation xmlns:p=\"x\" xmlns:r=\"y\">"
+         "<p:sldSz cx=\"9144000\" cy=\"6858000\"/>"
+         "<p:sldIdLst><p:sldId id=\"256\" r:id=\"rS1\"/></p:sldIdLst></p:presentation>"},
+        {"ppt/_rels/presentation.xml.rels",
+         "<?xml version=\"1.0\"?><Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">"
+         "<Relationship Id=\"rS1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide\" "
+         "Target=\"slides/slide1.xml\"/></Relationships>"},
+        {"ppt/slides/slide1.xml", xml_slide},
+        {"ppt/slides/_rels/slide1.xml.rels", rels_slide},
+    };
+    for (const auto& e : extra) partes.push_back({e.first, e.second});
+    return ZipDePrueba(partes);
+}
+
+std::string SlideTextoConEstilos() {
+    return "<?xml version=\"1.0\"?><p:sld xmlns:p=\"x\" xmlns:a=\"z\">"
+           "<p:cSld><p:spTree><p:sp>"
+           "<p:nvSpPr><p:cNvPr id=\"2\" name=\"T\u00edtulo 1\"/>"
+           "<p:cNvSpPr/><p:nvPr><p:ph type=\"title\"/></p:nvPr></p:nvSpPr>"
+           "<p:txBody><a:p><a:r><a:rPr sz=\"4400\" b=\"1\"/><a:t>Bendecid</a:t></a:r></a:p></p:txBody>"
+           "</p:sp><p:sp>"
+           "<p:nvSpPr><p:cNvPr id=\"3\" name=\"Cuerpo\"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr>"
+           "<p:txBody>"
+           "<a:p><a:r><a:t>al Se\u00f1or </a:t></a:r>"
+           "<a:r><a:rPr sz=\"4000\" i=\"1\" u=\"sng\"/><a:t>con alegr\u00eda</a:t></a:r>"
+           "<a:r><a:rPr sz=\"4000\" i=\"1\"><a:solidFill><a:srgbClr val=\"FFCC00\"/></a:solidFill></a:rPr>"
+           "<a:t> siempre</a:t></a:r></a:p>"
+           "</p:txBody></p:sp></p:spTree></p:cSld></p:sld>";
+}
+
+} // namespace
+
+TEST_CASE("v2: runs con estilo — tamaño, negrita, cursiva, subrayado y color") {
+    const std::string paquete = PackageConDiapositiva(SlideTextoConEstilos(), "<Relationships/>");
+    std::vector<DiapositivaPptx> diapos;
+    const InfoPptx info = LectorPptx::LeerDesdeMemoria(
+        reinterpret_cast<const unsigned char*>(paquete.data()), paquete.size(),
+        &diapos);
+    REQUIRE(info.ok == true);
+    REQUIRE(diapos.size() == 1);
+    const DiapositivaPptx& d = diapos[0];
+    CHECK(d.titulo == "Bendecid");
+    REQUIRE(d.parrafos_ricos.size() == 1);
+    const ParrafoPptx& par = d.parrafos_ricos[0];
+    REQUIRE(par.runs.size() == 3);
+    // Texto plano unido sin separador (compat v1 intacta).
+    REQUIRE(d.parrafos.size() == 1);
+    CHECK(d.parrafos[0] == "al Se\xc3\xb1or con alegr\xc3\xad""a siempre");
+
+    // Run 1: sin estilo explícito más allá del texto.
+    CHECK(par.runs[0].texto_utf8 == "al Se\xc3\xb1or ");
+    CHECK(par.runs[0].tiene_tamano == false);
+    // Run 2: sz=4000 → 40 pt, cursiva, subrayado.
+    CHECK(par.runs[1].texto_utf8 == "con alegr\xc3\xad" "a");
+    CHECK(par.runs[1].tiene_tamano == true);
+    CHECK(par.runs[1].tam_pt == doctest::Approx(40.0));
+    CHECK(par.runs[1].cursiva == true);
+    CHECK(par.runs[1].subrayado == true);
+    CHECK(par.runs[1].negrita == false);
+    // Run 3: color explícito.
+    CHECK(par.runs[2].tiene_color == true);
+    CHECK(par.runs[2].color_hex == "#FFCC00");
+}
+
+TEST_CASE("v2: run del título con sz/negrita legible para el render") {
+    const std::string paquete = PackageConDiapositiva(SlideTextoConEstilos(), "<Relationships/>");
+    std::vector<DiapositivaPptx> diapos;
+    const InfoPptx info = LectorPptx::LeerDesdeMemoria(
+        reinterpret_cast<const unsigned char*>(paquete.data()), paquete.size(),
+        &diapos);
+    REQUIRE(info.ok == true);
+    // El título conserva el texto unido de sus runs.
+    CHECK(diapos[0].titulo == "Bendecid");
+}
+
+TEST_CASE("v2: imagen interna decodificada con stb_image (posición EMU)") {
+    const std::string xml =
+        "<?xml version=\"1.0\"?><p:sld xmlns:p=\"x\" xmlns:a=\"z\" xmlns:r=\"y\">"
+        "<p:cSld><p:spTree>"
+        "<p:pic><p:nvPicPr><p:cNvPr id=\"5\" name=\"Foto\"/><p:cNvPicPr/><p:nvPr/></p:nvPicPr>"
+        "<p:blipFill><a:blip r:embed=\"rImg1\"/><a:stretch><a:fillRect/></a:stretch></p:blipFill>"
+        "<p:spPr><a:xfrm><a:off x=\"914400\" y=\"457200\"/><a:ext cx=\"2743200\" cy=\"1828800\"/></a:xfrm>"
+        "<a:prstGeom prst=\"rect\"><a:avLst/></a:prstGeom></p:spPr></p:pic>"
+        "</p:spTree></p:cSld></p:sld>";
+    const std::string rels =
+        "<?xml version=\"1.0\"?><Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">"
+        "<Relationship Id=\"rImg1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/image\" "
+        "Target=\"../media/image1.png\"/></Relationships>";
+    const std::string png(reinterpret_cast<const char*>(kPng2x2),
+                          sizeof(kPng2x2));
+    const std::string paquete = PackageConDiapositiva(xml, rels,
+                                                      {{"ppt/media/image1.png", png}});
+    std::vector<DiapositivaPptx> diapos;
+    const InfoPptx info = LectorPptx::LeerDesdeMemoria(
+        reinterpret_cast<const unsigned char*>(paquete.data()), paquete.size(),
+        &diapos);
+    REQUIRE(info.ok == true);
+    CHECK(info.avisos.empty());
+    REQUIRE(diapos.size() == 1);
+    REQUIRE(diapos[0].imagenes.size() == 1);
+    const ImagenPptx& img = diapos[0].imagenes[0];
+    CHECK(img.ancho == 2);
+    CHECK(img.alto == 2);
+    REQUIRE(img.rgba.size() == 2 * 2 * 4);
+    CHECK(img.rgba[0] == 255);  // rojo en (0,0)
+    CHECK(img.rgba[1] == 0);
+    CHECK(img.rgba[2] == 0);
+    CHECK(img.rgba[3] == 255);
+    CHECK(img.x_emu == 914400);
+    CHECK(img.y_emu == 457200);
+    CHECK(img.w_emu == 2743200);
+    CHECK(img.h_emu == 1828800);
+    CHECK(img.parte == "ppt/media/image1.png");
+}
+
+TEST_CASE("v2: imagen con relación inexistente → aviso, sin imagen") {
+    const std::string xml =
+        "<?xml version=\"1.0\"?><p:sld xmlns:p=\"x\" xmlns:a=\"z\" xmlns:r=\"y\">"
+        "<p:cSld><p:spTree><p:pic>"
+        "<p:blipFill><a:blip r:embed=\"rNoExiste\"/></p:blipFill>"
+        "<p:spPr><a:xfrm><a:off x=\"0\" y=\"0\"/><a:ext cx=\"100\" cy=\"100\"/></a:xfrm></p:spPr>"
+        "</p:pic></p:spTree></p:cSld></p:sld>";
+    const std::string paquete = PackageConDiapositiva(xml, "<Relationships/>");
+    std::vector<DiapositivaPptx> diapos;
+    const InfoPptx info = LectorPptx::LeerDesdeMemoria(
+        reinterpret_cast<const unsigned char*>(paquete.data()), paquete.size(),
+        &diapos);
+    REQUIRE(info.ok == true);
+    REQUIRE(diapos.size() == 1);
+    CHECK(diapos[0].imagenes.empty());
+    REQUIRE(info.avisos.size() == 1);
+    CHECK(info.avisos[0].find("rNoExiste") != std::string::npos);
+}
+
+TEST_CASE("v2: media ausente y media no-imagen → aviso explícito") {
+    const std::string rels =
+        "<?xml version=\"1.0\"?><Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">"
+        "<Relationship Id=\"rImg3\" Type=\"t/image\" Target=\"../media/faltante.png\"/></Relationships>";
+    const std::string xml3 =
+        "<?xml version=\"1.0\"?><p:sld xmlns:p=\"x\" xmlns:a=\"z\" xmlns:r=\"y\">"
+        "<p:cSld><p:spTree><p:pic>"
+        "<p:blipFill><a:blip r:embed=\"rImg3\"/></p:blipFill>"
+        "<p:spPr><a:xfrm><a:off x=\"0\" y=\"0\"/><a:ext cx=\"1\" cy=\"1\"/></a:xfrm></p:spPr></p:pic>"
+        "</p:spTree></p:cSld></p:sld>";
+    SUBCASE("media sin parte en el paquete") {
+        const std::string paquete = PackageConDiapositiva(xml3, rels);
+        std::vector<DiapositivaPptx> diapos;
+        const InfoPptx info = LectorPptx::LeerDesdeMemoria(
+            reinterpret_cast<const unsigned char*>(paquete.data()), paquete.size(),
+            &diapos);
+        REQUIRE(info.ok == true);
+        CHECK(diapos[0].imagenes.empty());
+        REQUIRE(info.avisos.size() == 1);
+        CHECK(info.avisos[0].find("faltante.png") != std::string::npos);
+    }
+    SUBCASE("media corrupta (no es imagen)") {
+        const std::string rels2 =
+            "<?xml version=\"1.0\"?><Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">"
+            "<Relationship Id=\"rImg3\" Type=\"t/image\" Target=\"../media/roto.png\"/></Relationships>";
+        const std::string paquete = PackageConDiapositiva(
+            xml3, rels2, {{"ppt/media/roto.png", "esto no es una imagen"}});
+        std::vector<DiapositivaPptx> diapos;
+        const InfoPptx info = LectorPptx::LeerDesdeMemoria(
+            reinterpret_cast<const unsigned char*>(paquete.data()), paquete.size(),
+            &diapos);
+        REQUIRE(info.ok == true);
+        CHECK(diapos[0].imagenes.empty());
+        REQUIRE(info.avisos.size() == 1);
+        CHECK(info.avisos[0].find("no usable") != std::string::npos);
+    }
+}

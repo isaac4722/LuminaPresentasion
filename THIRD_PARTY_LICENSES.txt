@@ -15,6 +15,8 @@ Núcleo (C++17)
 | doctest         | 2.x        | MIT          | github.com/doctest/doctest                |
 | nlohmann/json    | 3.x        | MIT          | github.com/nlohmann/json                  |
 | SQLite          | 3.x (amalg)| Public Domain| sqlite.org                                |
+| pugixml         | 1.14       | MIT          | github.com/zeux/pugixml (vendido)         |
+| stb_image       | 2.30       | Public Domain| github.com/nothings/stb (vendido)         |
 
 Capa gestionada (C# .NET Framework)
 -----------------------------------

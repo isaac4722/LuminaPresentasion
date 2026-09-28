@@ -59,10 +59,13 @@ configure_file(
 # ---------------------------------------------------------------------------
 add_library(fusion_third_party STATIC
     ${FUSION_THIRD_PARTY}/sqlite/sqlite3.c
+    ${FUSION_THIRD_PARTY}/pugixml/pugixml.cpp
 )
 target_include_directories(fusion_third_party PUBLIC
     ${FUSION_THIRD_PARTY}
     ${FUSION_THIRD_PARTY}/sqlite
+    ${FUSION_THIRD_PARTY}/pugixml
+    ${FUSION_THIRD_PARTY}/stb
 )
 # Forzar detección de lenguaje C para el target (sqlite3.c es C, no C++)
 set_target_properties(fusion_third_party PROPERTIES LINKER_LANGUAGE C)
@@ -101,6 +104,7 @@ add_executable(FusionCore WIN32
     ${FUSION_SRC_DIR}/core/PlanPptx.cpp
     ${FUSION_SRC_DIR}/core/PlanExport.cpp
     ${FUSION_SRC_DIR}/core/PptxDirecto.cpp
+    ${FUSION_SRC_DIR}/core/StbImagen.cpp
     ${FUSION_SRC_DIR}/core/ExportadorPptx.cpp
     ${FUSION_SRC_DIR}/core/ExportadorPdf.cpp
     ${FUSION_SRC_DIR}/core/ExportadorPng.cpp
@@ -160,6 +164,7 @@ if(FUSION_BUILD_TESTS)
         ${FUSION_SRC_DIR}/core/PlanPptx.cpp
         ${FUSION_SRC_DIR}/core/PlanExport.cpp
         ${FUSION_SRC_DIR}/core/PptxDirecto.cpp
+        ${FUSION_SRC_DIR}/core/StbImagen.cpp
         ${FUSION_SRC_DIR}/core/ExportadorPptx.cpp
         ${FUSION_SRC_DIR}/core/ExportadorPdf.cpp
         ${FUSION_SRC_DIR}/core/ExportadorPng.cpp

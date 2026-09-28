@@ -43,3 +43,14 @@ cuando esté implementado (pendiente).
 ## Licencias
 
 Ver `THIRD_PARTY_LICENSES.txt` en la raíz del repo.
+
+
+## Vendidos en el árbol (Sección 9.2, modo directo v2)
+
+- **pugixml/pugixml.cpp + pugixml.hpp + pugiconfig.hpp** (v1.14, MIT):
+  parseo XML de diapositivas y partes OPC. Configuración sin excepciones
+  (PUGIXML_NO_EXCEPTIONS), sin STL ni XPath. Licencia en pugixml/LICENSE.md.
+- **stb/stb_image.h** (v2.30, dominio público): decodificación PNG/JPEG/
+  BMP/GIF de las imágenes media del paquete a RGBA. La configuración
+  (STBI_NO_*) vive en src/core/src/core/StbImagen.h, compartida por todas
+  las TUs. La implementación se compila una única vez en StbImagen.cpp.
