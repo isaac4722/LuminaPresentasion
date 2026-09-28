@@ -180,6 +180,9 @@ if(FUSION_BUILD_TESTS)
         fusion_third_party
     )
     if(MSVC)
+        # RenderDirecto.cpp lleva la mitad D2D del rasterizador (solo se
+        # PRUEBA la parte portable, pero el objeto necesita los símbolos).
+        target_link_libraries(fusion_tests PRIVATE d2d1 dwrite ole32 windowscodecs uuid)
         target_compile_options(fusion_tests PRIVATE /W0)
         target_compile_definitions(fusion_tests PRIVATE
             WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE
