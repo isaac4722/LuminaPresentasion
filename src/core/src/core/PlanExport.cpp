@@ -16,6 +16,29 @@ bool EsTextoProyectable(TipoElemento t) {
     return t == TipoElemento::Texto || t == TipoElemento::Versiculo;
 }
 
+// Texto de respaldo para un elemento de texto sin líneas: el versículo
+// en sí (o su cita), o el título del texto.
+std::string RespaldoTexto(const Elemento& el) {
+    if (el.tipo == TipoElemento::Versiculo)
+        return !el.texto_versiculo.empty() ? el.texto_versiculo : el.cita;
+    return el.titulo;
+}
+
+UnidadExport UnidadBase(const Escenario& e, const Elemento& el,
+                        int idx_esc, int idx_el) {
+    UnidadExport u;
+    u.titulo = el.titulo;
+    u.ruta = el.ruta;
+    u.escenario = e.nombre;
+    u.indice_escenario = idx_esc;
+    u.indice_elemento = idx_el;
+    if (!EsTextoProyectable(el.tipo)) {
+        u.tipo = el.tipo == TipoElemento::Pptx ? UnidadExport::Tipo::Pptx
+                                               : UnidadExport::Tipo::Medio;
+    }
+    return u;
+}
+
 // Nombre de archivo seguro: alfanuméricos, espacios, '-', '_' y '.';
 // el resto se sustituye por '_' (nada de rutas ni caracteres raros).
 std::string NombreBaseDesde(const Programa& p) {
@@ -45,21 +68,38 @@ std::string NombreBaseDesde(const Programa& p) {
 
 } // namespace
 
-int PlanExport::ContarUnidades(const Programa& p) {
-    int total = 0;
+std::vector<UnidadExport> PlanExport::EnumerarUnidades(const Programa& p) {
+    std::vector<UnidadExport> out;
+    int idx_esc = 0;
     for (const auto& e : p.escenarios) {
+        ++idx_esc;
+        int idx_el = 0;
         for (const auto& el : e.elementos) {
+            ++idx_el;
             if (EsTextoProyectable(el.tipo)) {
-                // Una diapositiva por línea; un elemento de texto sin
-                // líneas sigue siendo una unidad (título suelto).
-                total += el.lineas.empty() ? 1
-                          : static_cast<int>(el.lineas.size());
+                if (el.lineas.empty()) {
+                    UnidadExport u = UnidadBase(e, el, idx_esc, idx_el);
+                    u.lineas.push_back(RespaldoTexto(el));
+                    out.push_back(std::move(u));
+                } else {
+                    for (const auto& l : el.lineas) {
+                        UnidadExport u = UnidadBase(e, el, idx_esc, idx_el);
+                        u.lineas.push_back(l.texto);
+                        out.push_back(std::move(u));
+                    }
+                }
             } else {
-                total += 1;
+                out.push_back(UnidadBase(e, el, idx_esc, idx_el));
             }
         }
     }
-    return total;
+    return out;
+}
+
+int PlanExport::ContarUnidades(const Programa& p) {
+    // Fuente única: el conteo es el tamaño de la enumeración, así el
+    // plan y la ejecución jamás discrepen.
+    return static_cast<int>(EnumerarUnidades(p).size());
 }
 
 PlanExportResultado PlanExport::Planificar(const Programa& p,

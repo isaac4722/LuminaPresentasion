@@ -9,6 +9,8 @@
 
 #include "fusion/core/PptxDirecto.h"
 
+#include "ZipInterno.h"  // Crc32 + lecturas LE compartidas (fusion::zipint)
+
 #include <algorithm>
 #include <cctype>
 #include <cstdint>
@@ -21,51 +23,14 @@ namespace fusion {
 namespace {
 
 // ---------------------------------------------------------------------------
-// Lecturas little-endian acotadas
+// Lecturas little-endian y CRC32: viven en ZipInterno.h (fusion::zipint),
+// compartidas con el escritor de paquetes.
 // ---------------------------------------------------------------------------
 
-uint16_t Leer16(const unsigned char* b, size_t tam, size_t pos) {
-    if (pos + 2 > tam) return 0;
-    return static_cast<uint16_t>(b[pos] | (b[pos + 1] << 8));
-}
-
-uint32_t Leer32(const unsigned char* b, size_t tam, size_t pos) {
-    if (pos + 4 > tam) return 0;
-    return static_cast<uint32_t>(b[pos]) |
-           (static_cast<uint32_t>(b[pos + 1]) << 8) |
-           (static_cast<uint32_t>(b[pos + 2]) << 16) |
-           (static_cast<uint32_t>(b[pos + 3]) << 24);
-}
-
-uint64_t Leer64(const unsigned char* b, size_t tam, size_t pos) {
-    if (pos + 8 > tam) return 0;
-    uint64_t v = 0;
-    for (int i = 7; i >= 0; --i)
-        v = (v << 8) | static_cast<uint64_t>(b[pos + i]);
-    return v;
-}
-
-// ---------------------------------------------------------------------------
-// CRC32 (polinomio 0xEDB88320, reflejado)
-// ---------------------------------------------------------------------------
-
-uint32_t Crc32(const unsigned char* d, size_t n) {
-    static uint32_t tabla[256];
-    static bool lista = false;
-    if (!lista) {
-        for (uint32_t i = 0; i < 256; ++i) {
-            uint32_t c = i;
-            for (int k = 0; k < 8; ++k)
-                c = (c & 1) ? (0xEDB88320u ^ (c >> 1)) : (c >> 1);
-            tabla[i] = c;
-        }
-        lista = true;
-    }
-    uint32_t c = 0xFFFFFFFFu;
-    for (size_t i = 0; i < n; ++i)
-        c = tabla[(c ^ d[i]) & 0xFFu] ^ (c >> 8);
-    return c ^ 0xFFFFFFFFu;
-}
+using fusion::zipint::Leer16;
+using fusion::zipint::Leer32;
+using fusion::zipint::Leer64;
+using fusion::zipint::Crc32;
 
 // ---------------------------------------------------------------------------
 // Inflador RFC 1951 (deflate crudo). Estilo canónico: cuenta por longitud

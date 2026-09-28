@@ -34,6 +34,22 @@ struct PlanExportResultado {
     std::string msg_error;           // vacío si ok
 };
 
+// Una unidad exportable concreta (diapositiva/página/archivo 1:1).
+// Es la enumeración exacta de lo que ContarUnidades cuenta, para que
+// planificar y ejecutar jamás discrepen.
+struct UnidadExport {
+    enum class Tipo { Texto, Medio, Pptx };
+
+    Tipo tipo = Tipo::Texto;
+    std::string titulo;              // título del elemento (o vacío)
+    std::vector<std::string> lineas; // Texto: la línea proyectable
+                                     // (los medios/pptx no llevan líneas)
+    std::string ruta;                // Medio/Pptx: archivo de origen
+    std::string escenario;           // nombre del escenario de origen
+    int indice_escenario = 0;        // 1-based
+    int indice_elemento = 0;         // 1-based dentro del escenario
+};
+
 class PlanExport {
 public:
     // Unidades proyectables de un elemento: los elementos de texto
@@ -41,6 +57,10 @@ public:
     // navega el operador con B/C/L y Espacio); los medios y pptx son
     // una unidad por elemento.
     static int ContarUnidades(const Programa& p);
+
+    // Enumera las unidades con su contenido. El número de unidades
+    // devueltas SIEMPRE coincide con ContarUnidades.
+    static std::vector<UnidadExport> EnumerarUnidades(const Programa& p);
 
     // Planifica la exportación de un programa completo en el formato
     // dado. Devuelve false y msg_error si no hay nada exportable.
