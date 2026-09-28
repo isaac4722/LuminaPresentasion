@@ -39,6 +39,7 @@
   <ItemGroup>
     <Compile Include="AhpFormatTests.cs" />
     <Compile Include="ImportadorPptxTests.cs" />
+    <Compile Include="IpcClientTests.cs" />
     <Compile Include="PptxMuestra.cs" />
     <Compile Include="ProgramaTestRunner.cs" />
   </ItemGroup>

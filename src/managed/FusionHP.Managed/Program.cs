@@ -22,8 +22,10 @@ namespace FusionHP.Managed
                 if (!ipc.Conectar())
                 {
                     MessageBox.Show(
-                        "No se pudo conectar al núcleo de FUSION-HP (FusionCore.exe).\n" +
-                        "Verifica que el launcher arrancó el núcleo correctamente.",
+                        "No se pudo conectar al núcleo de FUSION-HP (FusionCore.exe).\n\n" +
+                        ipc.UltimoError + "\n\n" +
+                        "Si el problema persiste, revisa runtime\\arranque.log " +
+                        "junto al programa y compártelo con el reporte.",
                         "FUSION-HP", MessageBoxButtons.OK, MessageBoxIcon.Error);
                     return;
                 }
