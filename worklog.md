@@ -689,3 +689,21 @@ Reporte del propietario: "Error no abre Core."
 - Pendiente para próximas sesiones: eventos evento.* en las carcasas
   (suscripción ya funcional en el transporte), gestión de temas por IPC,
   net35 dual-target, subrayado por-run en D2D, prstGeom/custGeom.
+
+Adenda de la sesión XI — CI y publicación:
+
+- Tres corridas rojas de ajuste MSVC (errores solo visibles en CI, el
+  arnés local es gcc): faltaba windows.h en Engine.cpp y la suma de
+  wide strings en el launcher (C2110); desreferencia del shared_ptr del
+  estado en IpcServer; swprintf_s es WIDE en MSVC → snprintf para el
+  sello char de la bitácora. Commits d0c7115, aec6ac1, 42dd845.
+- Run 36474173238 en VERDE (10/10). Tag v0.9.3 → run 36474773778 VERDE
+  (núcleo dual + tests, gestionada + tests IPC, launcher, Qt dual, gate,
+  portable dual, instaladores dual, publicación) → release publicada:
+  FUSION-HP-portable-x86.zip (13,5 MB), FUSION-HP-portable-x64.zip
+  (15,6 MB), FusionHP-Setup-x86.exe (11,3 MB), FusionHP-Setup-x64.exe
+  (12,7 MB).
+- https://github.com/isaac4722/LuminaPresentasion/releases/tag/v0.9.3
+- Suite final: 162 casos / 1247 aserciones (gcc-14, 0 avisos) + 17 tests
+  gestionados C# + doble arquitectura MSVC + gate + portable +
+  instaladores.
