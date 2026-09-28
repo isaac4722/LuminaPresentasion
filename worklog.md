@@ -468,3 +468,34 @@ incrustación de imágenes en exportadores:
 - Pendiente siguiente sesión: consumir RasterizadorDirectoD2D desde el
   shell para proyección del modo directo (Engine en vivo), letterbox
   por aspecto, imágenes/formas internas del pptx, fondo tipo imagen.
+
+---
+
+Sesión IX — letterbox, auto-ajuste y fondo imagen del render directo:
+
+- Estado de partida: se detectó la sesión VIII ya pusheada (f1e1c60,
+  115 casos / 934 aserciones, CI 10/10). El maquetador standalone
+  preparado en esta sesión se RECONCILIÓ con su arquitectura (plan
+  portable + rutinas D2D compartidas): en lugar de duplicar motores,
+  sus aportes se plegaron como piezas nuevas sobre ConstruirPlan.
+- Pieza letterbox (b5fe48c): DibujarPlan y RasterizadorDirectoD2D
+  encajan el plan en el objetivo según plan.aspecto con Encajar/
+  Renormalizar portables; el fondo del tema cubre el objetivo completo
+  (regla 6.1); identidad cuando el objetivo coincide; aspecto inválido
+  degrada a objetivo completo. Cierra el letterbox "fuera de alcance
+  v1" de la sesión VIII. 4 casos nuevos.
+- Pieza auto-ajuste (293d105): ConstruirPlan reduce el tamaño (x0.90,
+  mínimo max(9px, 1.1% de 1080)) con métricas estimadas portables
+  (0.55x media, 1.0x CJK, interlineado 1.35) hasta que el párrafo más
+  exigente cabe en su slot; cada reducción avisa. DibujarPlan y el
+  rasterizador re-escalan la fuente a alto/1080 (calibración 1080p).
+  5 casos nuevos.
+- Pieza fondo imagen (4c2688d): fondo tipo imagen con ruta se respeta
+  (WIC en ambas mitades D2D, full-bleed bajo el letterbox); sin ruta
+  degrada a color1 con aviso. 2 casos nuevos.
+- Verificación local: 125 casos / 1019 aserciones (gcc-14, -Wall
+  -Wextra, 0 avisos). CI 10/10 VERDE en b5fe48c, 293d105 y 4c2688d.
+- Pendiente siguiente sesión: imágenes/formas internas del pptx
+  (blip r:embed + ppt/media + EMU), estilos por-run, consumir el
+  rasterizador desde el shell (Engine en vivo), etiquetar v* para
+  publicar release con portable e instaladores.
