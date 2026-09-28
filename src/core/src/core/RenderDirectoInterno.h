@@ -78,6 +78,14 @@ bool DibujarImagenEnRT(ID2D1RenderTarget* rt, IWICImagingFactory* wic,
                        const std::wstring& ruta, AjusteImagen ajuste,
                        float dx, float dy, float dw, float dh);
 
+// Dibuja una imagen ya decodificada (RGBA 8 bits recto, memoria del
+// núcleo: media de un paquete PPTX) estirada al rectángulo destino.
+// Devuelve false si WIC/D2D falla (el caller decide el aviso).
+bool DibujarImagenMemoriaEnRT(ID2D1RenderTarget* rt, IWICImagingFactory* wic,
+                              const unsigned char* rgba, int ancho_px,
+                              int alto_px, float dx, float dy, float dw,
+                              float dh);
+
 } // namespace fusion::rendirecto
 
 #endif  // _WIN32

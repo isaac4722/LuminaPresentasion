@@ -39,11 +39,20 @@ namespace fusion {
 // ventana de proyección, exportación) y el layout no depende de la
 // resolución. El fondo NO es un paso: va aparte en PlanRenderDirecto.
 struct PasoDibujo {
-    enum class Tipo { Titulo, Cuerpo };
+    enum class Tipo { Titulo, Cuerpo, Imagen };
     Tipo         tipo = Tipo::Titulo;
     float        x = 0, y = 0, w = 0, h = 0;   // rectángulo normalizado
-    std::wstring texto;                        // UTF-16
+    std::wstring texto;                        // UTF-16 (Titulo/Cuerpo)
     EstiloTexto  estilo;
+    int          imagen_idx = -1;              // índice en plan.imagenes
+};
+
+// Imagen ya decodificada lista para dibujar (RGBA recto). Vive en el
+// plan y los pasos la referencian por índice (los pasos se copian al
+// renormalizar; los píxeles no).
+struct ImagenDibujo {
+    std::vector<unsigned char> rgba;   // ancho*alto*4 bytes
+    int ancho = 0, alto = 0;
 };
 
 struct PlanRenderDirecto {
@@ -59,8 +68,12 @@ struct PlanRenderDirecto {
     // no define fondo, queda negro sólido (regla 6.1 del doc técnico).
     Fondo fondo;
 
-    // Pasos en orden de dibujo (título primero, cuerpo después).
+    // Pasos en orden de dibujo (imágenes primero, título después,
+    // cuerpo al final: el texto nunca queda bajo una imagen).
     std::vector<PasoDibujo> pasos;
+
+    // Imágenes del plan (orden de inserción = orden de referencia).
+    std::vector<ImagenDibujo> imagenes;
 };
 
 struct OpcionesRenderDirecto {
@@ -68,6 +81,12 @@ struct OpcionesRenderDirecto {
     // descartan con aviso (nada silencioso), el resto se reparte el
     // cuerpo en slots iguales.
     int max_parrafos = 12;
+
+    // Tamaño de la diapositiva origen en EMU (p:sldSz del paquete).
+    // Necesario para normalizar las posiciones EMU de las imágenes
+    // p:pic. Si es 0, las imágenes se omiten con aviso (nada silencioso).
+    long long ancho_emu = 0;
+    long long alto_emu  = 0;
 };
 
 struct ResultadoRenderDirecto {

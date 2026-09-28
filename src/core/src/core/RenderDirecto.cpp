@@ -11,6 +11,29 @@
 namespace fusion {
 
 // ---------------------------------------------------------------------------
+// Portable: Color::DesdeHex (antes en Renderer.cpp; también la necesita el
+// render directo para los colores por-run)
+// ---------------------------------------------------------------------------
+
+Color Color::DesdeHex(const char* hex) {
+    Color c{0,0,0};
+    if (!hex) return c;
+    std::string s = hex;
+    if (!s.empty() && s[0] == '#') s = s.substr(1);
+    if (s.size() < 6) return c;
+    auto h2 = [](char ch) -> std::uint8_t {
+        if (ch >= '0' && ch <= '9') return ch - '0';
+        if (ch >= 'a' && ch <= 'f') return ch - 'a' + 10;
+        if (ch >= 'A' && ch <= 'F') return ch - 'A' + 10;
+        return 0;
+    };
+    c.r = (h2(s[0]) << 4) | h2(s[1]);
+    c.g = (h2(s[2]) << 4) | h2(s[3]);
+    c.b = (h2(s[4]) << 4) | h2(s[5]);
+    return c;
+}
+
+// ---------------------------------------------------------------------------
 // Portable: UTF-8 → UTF-16 (decodificador propio)
 // ---------------------------------------------------------------------------
 
@@ -264,6 +287,71 @@ constexpr float kCuerpoH    = 0.56f;
 constexpr float kCuerpoSoloY = 0.10f;
 constexpr float kCuerpoSoloH = 0.80f;
 
+// Mapa pt → píxeles del plan (referencia 1080). PowerPoint dibuja la
+// diapositiva a 96 dpi (alto estándar 7.5" = 720 px); escalando a la
+// referencia de 1080: px = pt * (96/72) * (1080 * 914400 / alto_emu / 96)
+// = pt * 13716000 / alto_emu. Con alto_emu <= 0 se asume 7.5" (6858000
+// EMU → factor 2.0). Clamp defensivo ante paquetes absurdos.
+float TamPtAPx1080(float pt, long long alto_emu) {
+    if (pt <= 0.0f) return 0.0f;
+    float factor = 2.0f;
+    if (alto_emu > 0) {
+        factor = 13716000.0f / static_cast<float>(alto_emu);
+        factor = std::min(std::max(factor, 0.2f), 12.0f);
+    }
+    return pt * factor;
+}
+
+// ¿El run trae estilo explícito (algún campo con valor propio)?
+bool RunConEstilo(const EstructuraRun& r) {
+    return r.tiene_tamano || r.tiene_color || r.negrita || r.cursiva;
+}
+
+// Aplica el estilo explícito del run sobre el estilo base (tema).
+void AplicarRunAEstilo(const EstructuraRun& run, long long alto_emu,
+                       EstiloTexto* e) {
+    if (run.tiene_tamano) {
+        const float px = TamPtAPx1080(run.tam_pt, alto_emu);
+        if (px > 0.0f) e->tamano = px;
+    }
+    if (run.tiene_color && run.color_hex.size() >= 6)
+        e->color = Color::DesdeHex(run.color_hex.c_str());
+    e->negrita = run.negrita;
+    e->cursiva = run.cursiva;
+}
+
+// ¿Dos estilos difieren en lo que el modo directo puede dibujar?
+bool EstilosDistintos(const EstiloTexto& a, const EstiloTexto& b) {
+    return a.tamano != b.tamano || a.negrita != b.negrita ||
+           a.cursiva != b.cursiva || a.color.r != b.color.r ||
+           a.color.g != b.color.g || a.color.b != b.color.b;
+}
+
+// Estilo efectivo de un párrafo (runs): el primer run con estilo
+// explícito manda; los demás se comparan y una mezcla SE AVISA (nada
+// silencioso: el render v2 no dibuja runs alternados dentro de un
+// párrafo). Devuelve false si el párrafo no trae estilo propio.
+bool EstiloDeParrafo(const ParrafoPptx& par, long long alto_emu,
+                     const EstiloTexto& base, EstiloTexto* out,
+                     bool* mezcla) {
+    *mezcla = false;
+    bool aplicado = false;
+    for (const auto& run : par.runs) {
+        if (!RunConEstilo(run)) continue;
+        if (!aplicado) {
+            EstiloTexto e = base;
+            AplicarRunAEstilo(run, alto_emu, &e);
+            *out = e;
+            aplicado = true;
+        } else {
+            EstiloTexto otro = base;
+            AplicarRunAEstilo(run, alto_emu, &otro);
+            if (EstilosDistintos(otro, *out)) *mezcla = true;
+        }
+    }
+    return aplicado;
+}
+
 ResultadoRenderDirecto RenderDirecto::ConstruirPlan(
         const DiapositivaPptx& diapo,
         const ResolucionTema& tema_resuelto,
@@ -299,8 +387,55 @@ ResultadoRenderDirecto RenderDirecto::ConstruirPlan(
         out->fondo.tipo = Fondo::Tipo::Solido;
     }
 
-    // Título (placeholder de la diapositiva): se agrega al plan después
-    // del cálculo de ajuste, para llevar el tamaño ya ajustado.
+    // -------------------------------------------------------------------------
+    // Imágenes internas (p:pic) ANTES del texto: orden de dibujo
+    // imágenes → título → cuerpo (el texto nunca queda bajo una imagen).
+    // -------------------------------------------------------------------------
+    if (!diapo.imagenes.empty()) {
+        if (opciones.ancho_emu <= 0 || opciones.alto_emu <= 0) {
+            r.avisos.push_back(
+                "El paquete no declara p:sldSz: las imágenes de la "
+                "diapositiva no se pueden posicionar y se omiten");
+        } else {
+            for (const auto& img : diapo.imagenes) {
+                if (img.rgba.empty() || img.ancho <= 0 || img.alto <= 0) {
+                    r.avisos.push_back(
+                        "Imagen no decodificada de la diapositiva: omitida");
+                    continue;
+                }
+                if (img.w_emu <= 0 || img.h_emu <= 0) {
+                    r.avisos.push_back(
+                        "Imagen sin a:xfrm (posición/tamaño): omitida" +
+                        std::string(img.parte.empty() ? "" : " (" +
+                        img.parte + ")"));
+                    continue;
+                }
+                ImagenDibujo dib;
+                dib.rgba = img.rgba;
+                dib.ancho = img.ancho;
+                dib.alto = img.alto;
+                out->imagenes.push_back(std::move(dib));
+
+                PasoDibujo paso;
+                paso.tipo = PasoDibujo::Tipo::Imagen;
+                paso.imagen_idx =
+                    static_cast<int>(out->imagenes.size()) - 1;
+                paso.x = static_cast<float>(
+                    static_cast<double>(img.x_emu) / opciones.ancho_emu);
+                paso.y = static_cast<float>(
+                    static_cast<double>(img.y_emu) / opciones.alto_emu);
+                paso.w = static_cast<float>(
+                    static_cast<double>(img.w_emu) / opciones.ancho_emu);
+                paso.h = static_cast<float>(
+                    static_cast<double>(img.h_emu) / opciones.alto_emu);
+                out->pasos.push_back(std::move(paso));
+            }
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // Título y cuerpo
+    // -------------------------------------------------------------------------
     const std::wstring titulo = Utf8AUtf16(diapo.titulo);
     const bool hay_titulo = !titulo.empty();
 
@@ -309,7 +444,21 @@ ResultadoRenderDirecto RenderDirecto::ConstruirPlan(
     const float cuerpo_y = hay_titulo ? kCuerpoY : kCuerpoSoloY;
     const float cuerpo_h = hay_titulo ? kCuerpoH : kCuerpoSoloH;
 
-    std::vector<std::string> parrafos = diapo.parrafos;
+    // Párrafos efectivos: ricos si el paquete los trae; si no, se
+    // sintetizan desde el texto plano (compatibilidad v1, sin estilo).
+    std::vector<ParrafoPptx> parrafos;
+    if (!diapo.parrafos_ricos.empty()) {
+        parrafos = diapo.parrafos_ricos;
+    } else {
+        parrafos.reserve(diapo.parrafos.size());
+        for (const auto& t : diapo.parrafos) {
+            ParrafoPptx par;
+            EstructuraRun run;
+            run.texto_utf8 = t;
+            par.runs.push_back(std::move(run));
+            parrafos.push_back(std::move(par));
+        }
+    }
     if (static_cast<int>(parrafos.size()) > opciones.max_parrafos) {
         r.avisos.push_back(
             "La diapositiva tiene " + std::to_string(parrafos.size()) +
@@ -321,8 +470,6 @@ ResultadoRenderDirecto RenderDirecto::ConstruirPlan(
     // Auto-ajuste del tamaño (referencia 1080p): se reduce x0.90 hasta
     // que el párrafo más exigente cabe en su slot. Los consumidores
     // re-escalan el tamaño al objetivo real (alto / 1080).
-    EstiloTexto estilo_titulo = estilo;
-    EstiloTexto estilo_cuerpo = estilo;
     const RectContenido referencia =
         Encajar(out->aspecto, 16.0f * kAltoReferencia / 9.0f,
                 kAltoReferencia);
@@ -336,6 +483,7 @@ ResultadoRenderDirecto RenderDirecto::ConstruirPlan(
                 std::to_string(static_cast<int>(ajustado + 0.5f)) +
                 " pt para caber en su banda");
         }
+        EstiloTexto estilo_titulo = estilo;
         estilo_titulo.tamano = ajustado;
 
         PasoDibujo paso;
@@ -352,8 +500,8 @@ ResultadoRenderDirecto RenderDirecto::ConstruirPlan(
     if (!parrafos.empty()) {
         std::vector<std::wstring> cuerpo;
         cuerpo.reserve(parrafos.size());
-        for (const auto& p : parrafos)
-            cuerpo.push_back(Utf8AUtf16(p));
+        for (const auto& par : parrafos)
+            cuerpo.push_back(Utf8AUtf16(par.Texto()));
 
         const float ajustado = AjustarTamano(
             cuerpo, estilo.tamano, ancho_banda,
@@ -364,11 +512,25 @@ ResultadoRenderDirecto RenderDirecto::ConstruirPlan(
                 std::to_string(static_cast<int>(ajustado + 0.5f)) +
                 " pt para caber en la diapositiva");
         }
-        estilo_cuerpo.tamano = ajustado;
 
         const int n = static_cast<int>(cuerpo.size());
         const float slot = cuerpo_h / static_cast<float>(n);
         for (int i = 0; i < n; ++i) {
+            EstiloTexto estilo_par = estilo;
+            estilo_par.tamano = ajustado;
+            bool mezcla = false;
+            if (EstiloDeParrafo(parrafos[static_cast<size_t>(i)],
+                                opciones.alto_emu, estilo,
+                                &estilo_par, &mezcla)) {
+                if (mezcla) {
+                    r.avisos.push_back(
+                        "Párrafo con estilos mezclados: se usa el estilo "
+                        "del primer run con estilo explícito");
+                }
+                // El ajuste por caber NO se reaplica por párrafo: el
+                // tamaño del run manda (fidelidad), el auto-ajuste es del
+                // tema cuando el run no declara tamaño.
+            }
             PasoDibujo paso;
             paso.tipo   = PasoDibujo::Tipo::Cuerpo;
             paso.x      = kBandaX;
@@ -376,7 +538,7 @@ ResultadoRenderDirecto RenderDirecto::ConstruirPlan(
             paso.w      = kBandaW;
             paso.h      = slot;
             paso.texto  = cuerpo[static_cast<size_t>(i)];
-            paso.estilo = estilo_cuerpo;
+            paso.estilo = estilo_par;
             out->pasos.push_back(std::move(paso));
         }
     }
@@ -395,6 +557,22 @@ void DibujarPlan(Renderer* r, const PlanRenderDirecto& plan,
     const float escala_fuente = alto / kAltoReferencia;
     const RectContenido contenido = Encajar(plan.aspecto, ancho, alto);
     for (const PasoDibujo& paso : plan.pasos) {
+        if (paso.tipo == PasoDibujo::Tipo::Imagen) {
+            if (paso.imagen_idx < 0 ||
+                paso.imagen_idx >=
+                    static_cast<int>(plan.imagenes.size()))
+                continue;
+            const ImagenDibujo& img =
+                plan.imagenes[static_cast<size_t>(paso.imagen_idx)];
+            if (img.rgba.empty() || img.ancho <= 0 || img.alto <= 0)
+                continue;
+            const PasoDibujo q =
+                Renormalizar(paso, contenido, ancho, alto);
+            r->DibujarImagenMemoria(img.rgba.data(), img.ancho, img.alto,
+                                    q.x * ancho, q.y * alto,
+                                    q.w * ancho, q.h * alto);
+            continue;
+        }
         PasoDibujo q = Renormalizar(paso, contenido, ancho, alto);
         q.estilo.tamano *= escala_fuente;
         r->DibujarTexto(q.texto, q.estilo,
@@ -612,6 +790,51 @@ bool DibujarImagenEnRT(ID2D1RenderTarget* rt, IWICImagingFactory* wic,
     return true;
 }
 
+// Dibuja una imagen ya decodificada (RGBA recto, memoria) estirada al
+// rectángulo destino: RGBA → PBGRA premultiplicada, bitmap D2D y
+// DrawBitmap. El rect del modo directo ya respeta el aspecto original
+// (viene del a:xfrm del autor), así que el ajuste es "estirar" exacto.
+bool DibujarImagenMemoriaEnRT(ID2D1RenderTarget* rt, IWICImagingFactory* wic,
+                              const unsigned char* rgba, int ancho_px,
+                              int alto_px, float dx, float dy, float dw,
+                              float dh) {
+    (void)wic;  // el bitmap se crea directo sobre el target (sin WIC)
+    if (!rt || !rgba || ancho_px <= 0 || alto_px <= 0 || dw <= 0 || dh <= 0)
+        return false;
+    const UINT px = static_cast<UINT>(ancho_px) *
+                    static_cast<UINT>(alto_px);
+    if (px == 0 || px > 64u * 1024 * 1024) return false;
+    std::vector<unsigned char> pbgra(static_cast<size_t>(px) * 4);
+    for (UINT i = 0; i < px; ++i) {
+        const unsigned char* p = rgba + static_cast<size_t>(i) * 4;
+        unsigned char* q = pbgra.data() + static_cast<size_t>(i) * 4;
+        const unsigned a = p[3];
+        if (a == 255) {
+            q[0] = p[2]; q[1] = p[1]; q[2] = p[0]; q[3] = 255;
+        } else if (a == 0) {
+            q[0] = q[1] = q[2] = q[3] = 0;
+        } else {
+            q[0] = static_cast<unsigned char>((p[2] * a + 127) / 255);
+            q[1] = static_cast<unsigned char>((p[1] * a + 127) / 255);
+            q[2] = static_cast<unsigned char>((p[0] * a + 127) / 255);
+            q[3] = static_cast<unsigned char>(a);
+        }
+    }
+    D2D1_BITMAP_PROPERTIES props = D2D1::BitmapProperties(
+        D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM,
+                          D2D1_ALPHA_MODE_PREMULTIPLIED));
+    ComPtr<ID2D1Bitmap> bitmap;
+    HRESULT hr = rt->CreateBitmap(
+        D2D1::SizeU(static_cast<UINT32>(ancho_px),
+                    static_cast<UINT32>(alto_px)),
+        pbgra.data(), static_cast<UINT32>(ancho_px) * 4, props,
+        bitmap.GetAddressOf());
+    if (FAILED(hr)) return false;
+    rt->DrawBitmap(bitmap.Get(),
+                   D2D1::RectF(dx, dy, dx + dw, dy + dh));
+    return true;
+}
+
 } // namespace fusion::rendirecto
 
 // ---------------------------------------------------------------------------
@@ -711,6 +934,23 @@ bool RasterizadorDirectoD2D::Rasterizar(const PlanRenderDirecto& plan,
         plan.aspecto, static_cast<float>(ancho), static_cast<float>(alto));
     const float escala_fuente = static_cast<float>(alto) / kAltoReferencia;
     for (const PasoDibujo& paso : plan.pasos) {
+        if (paso.tipo == PasoDibujo::Tipo::Imagen) {
+            if (paso.imagen_idx < 0 ||
+                paso.imagen_idx >= static_cast<int>(plan.imagenes.size()))
+                continue;
+            const ImagenDibujo& img =
+                plan.imagenes[static_cast<size_t>(paso.imagen_idx)];
+            if (img.rgba.empty() || img.ancho <= 0 || img.alto <= 0)
+                continue;
+            const PasoDibujo q = Renormalizar(
+                paso, contenido, static_cast<float>(ancho),
+                static_cast<float>(alto));
+            rendirecto::DibujarImagenMemoriaEnRT(
+                rt.Get(), impl_->wic.Get(), img.rgba.data(), img.ancho,
+                img.alto, q.x * ancho, q.y * alto, q.w * ancho,
+                q.h * alto);
+            continue;
+        }
         PasoDibujo q = Renormalizar(paso, contenido,
                                     static_cast<float>(ancho),
                                     static_cast<float>(alto));

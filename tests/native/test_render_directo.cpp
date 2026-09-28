@@ -595,3 +595,219 @@ TEST_CASE("DibujarPlan: reescala el tamano de fuente al objetivo (alto/1080)") {
     REQUIRE(m450.textos.size() == 1);
     CHECK(m450.textos[0].estilo.tamano == doctest::Approx(25.0f).epsilon(0.01));
 }
+
+// ---------------------------------------------------------------------------
+// v2: estilos por-run e imágenes internas en el plan
+// ---------------------------------------------------------------------------
+
+// Extensión del grabador para las imágenes en memoria.
+class RendererGrabadorImagenes : public RendererGrabador {
+public:
+    struct ImagenLlamado {
+        int ancho, alto;
+        float x, y, w, h;
+        unsigned char primer_pixel;
+    };
+    void DibujarImagenMemoria(const unsigned char* rgba, int ancho_px,
+                              int alto_px, float x, float y, float w,
+                              float h) override {
+        imagenes_mem.push_back({ancho_px, alto_px, x, y, w, h,
+                                static_cast<unsigned char>(rgba ? rgba[0] : 0)});
+    }
+    std::vector<ImagenLlamado> imagenes_mem;
+};
+
+TEST_CASE("v2: estilo del primer run con estilo manda en su párrafo") {
+    DiapositivaPptx d;
+    d.indice = 1;
+    ParrafoPptx par;
+    EstructuraRun r1;
+    r1.texto_utf8 = "Sin estilo";
+    par.runs.push_back(r1);
+    EstructuraRun r2;
+    r2.texto_utf8 = "Con estilo";
+    r2.tiene_tamano = true;
+    r2.tam_pt = 44.0f;              // sz="4400" → 44 pt
+    r2.negrita = true;
+    r2.tiene_color = true;
+    r2.color_hex = "#FFCC00";
+    par.runs.push_back(r2);
+    d.parrafos_ricos.push_back(par);
+
+    PlanRenderDirecto plan;
+    OpcionesRenderDirecto ops;
+    ops.alto_emu = 6858000;         // 7,5" estándar → factor 2.0
+    const ResolucionTema vacia;
+    const ResultadoRenderDirecto res =
+        RenderDirecto::ConstruirPlan(d, vacia, 16.0f / 9.0f, &plan, ops);
+    REQUIRE(res.ok == true);
+    REQUIRE(plan.pasos.size() == 1);
+    const PasoDibujo& paso = plan.pasos[0];
+    // 44 pt → 88 px de referencia (1080p): fidelidad con el archivo.
+    CHECK(paso.estilo.tamano == doctest::Approx(88.0));
+    CHECK(paso.estilo.negrita == true);
+    CHECK(paso.estilo.color.r == 255);
+    CHECK(paso.estilo.color.g == 204);
+    CHECK(paso.estilo.color.b == 0);
+    CHECK(res.avisos.empty());      // un solo estilo: sin mezcla
+}
+
+TEST_CASE("v2: párrafo con estilos mezclados → aviso explícito") {
+    DiapositivaPptx d;
+    d.indice = 1;
+    ParrafoPptx par;
+    EstructuraRun a;
+    a.texto_utf8 = "uno";
+    a.tiene_tamano = true;
+    a.tam_pt = 40.0f;
+    par.runs.push_back(a);
+    EstructuraRun b;
+    b.texto_utf8 = "dos";
+    b.tiene_tamano = true;
+    b.tam_pt = 24.0f;               // distinto del primero
+    par.runs.push_back(b);
+    d.parrafos_ricos.push_back(par);
+
+    PlanRenderDirecto plan;
+    OpcionesRenderDirecto ops;
+    ops.alto_emu = 6858000;
+    const ResolucionTema vacia;
+    const ResultadoRenderDirecto res =
+        RenderDirecto::ConstruirPlan(d, vacia, 16.0f / 9.0f, &plan, ops);
+    REQUIRE(res.ok == true);
+    REQUIRE(plan.pasos.size() == 1);
+    // Gana el PRIMERO (40 pt → 80 px), y se avisa la mezcla.
+    CHECK(plan.pasos[0].estilo.tamano == doctest::Approx(80.0));
+    REQUIRE(res.avisos.size() == 1);
+    CHECK(res.avisos[0].find("mezclados") != std::string::npos);
+}
+
+TEST_CASE("v2: imagen interna → paso Imagen antes del texto, rect EMU normalizado") {
+    DiapositivaPptx d;
+    d.indice = 1;
+    d.parrafos = {"Solo texto"};
+    ImagenPptx img;
+    img.rgba.assign(2 * 2 * 4, 128);
+    img.rgba[0] = 255;
+    img.ancho = 2;
+    img.alto = 2;
+    img.x_emu = 914400;             // 1" de 10"
+    img.y_emu = 0;
+    img.w_emu = 1828800;            // 2" de 10"
+    img.h_emu = 6858000;            // alto completo (7,5")
+    img.parte = "ppt/media/image1.png";
+    d.imagenes.push_back(img);
+
+    PlanRenderDirecto plan;
+    OpcionesRenderDirecto ops;
+    ops.ancho_emu = 9144000;
+    ops.alto_emu = 6858000;
+    const ResolucionTema vacia;
+    const ResultadoRenderDirecto res =
+        RenderDirecto::ConstruirPlan(d, vacia, 9144000.0f / 6858000.0f, &plan, ops);
+    REQUIRE(res.ok == true);
+    CHECK(res.avisos.empty());
+    REQUIRE(plan.imagenes.size() == 1);
+    REQUIRE(plan.imagenes[0].rgba.size() == 2 * 2 * 4);
+    REQUIRE(plan.pasos.size() == 2);
+    // El paso imagen va PRIMERO (el texto nunca queda debajo).
+    CHECK(plan.pasos[0].tipo == PasoDibujo::Tipo::Imagen);
+    CHECK(plan.pasos[0].imagen_idx == 0);
+    CHECK(plan.pasos[0].x == doctest::Approx(0.1));
+    CHECK(plan.pasos[0].y == doctest::Approx(0.0));
+    CHECK(plan.pasos[0].w == doctest::Approx(0.2));
+    CHECK(plan.pasos[0].h == doctest::Approx(1.0));
+    CHECK(plan.pasos[1].tipo == PasoDibujo::Tipo::Cuerpo);
+}
+
+TEST_CASE("v2: sin p:sldSz → imágenes omitidas con aviso; sin a:xfrm → aviso") {
+    DiapositivaPptx d;
+    d.indice = 1;
+    ImagenPptx img;
+    img.rgba.assign(4, 255);
+    img.ancho = 1;
+    img.alto = 1;
+    img.w_emu = 100;
+    img.h_emu = 100;
+    d.imagenes.push_back(img);
+
+    SUBCASE("sin tamaño de diapositiva") {
+        PlanRenderDirecto plan;
+        OpcionesRenderDirecto ops;  // ancho_emu/alto_emu = 0
+        const ResolucionTema vacia;
+        const ResultadoRenderDirecto res =
+            RenderDirecto::ConstruirPlan(d, vacia, 16.0f / 9.0f, &plan, ops);
+        REQUIRE(res.ok == true);
+        CHECK(plan.imagenes.empty());
+        CHECK(plan.pasos.empty());
+        REQUIRE(res.avisos.size() == 1);
+        CHECK(res.avisos[0].find("p:sldSz") != std::string::npos);
+    }
+    SUBCASE("sin a:xfrm en la imagen") {
+        ImagenPptx sin_xfrm = img;
+        sin_xfrm.w_emu = 0;
+        sin_xfrm.h_emu = 0;
+        d.imagenes.clear();
+        d.imagenes.push_back(sin_xfrm);
+        PlanRenderDirecto plan;
+        OpcionesRenderDirecto ops;
+        ops.ancho_emu = 9144000;
+        ops.alto_emu = 6858000;
+        const ResolucionTema vacia;
+        const ResultadoRenderDirecto res =
+            RenderDirecto::ConstruirPlan(d, vacia, 16.0f / 9.0f, &plan, ops);
+        REQUIRE(res.ok == true);
+        CHECK(plan.imagenes.empty());
+        REQUIRE(res.avisos.size() == 1);
+        CHECK(res.avisos[0].find("a:xfrm") != std::string::npos);
+    }
+}
+
+TEST_CASE("v2: DibujarPlan despacha imágenes en memoria con el rect del objetivo") {
+    PlanRenderDirecto plan;
+    plan.aspecto = 16.0f / 9.0f;
+    ImagenDibujo img;
+    img.rgba.assign(2 * 2 * 4, 200);
+    img.rgba[0] = 90;
+    img.ancho = 2;
+    img.alto = 2;
+    plan.imagenes.push_back(img);
+    PasoDibujo paso;
+    paso.tipo = PasoDibujo::Tipo::Imagen;
+    paso.imagen_idx = 0;
+    paso.x = 0.25f;
+    paso.y = 0.25f;
+    paso.w = 0.5f;
+    paso.h = 0.5f;
+    plan.pasos.push_back(paso);
+
+    RendererGrabadorImagenes grabador;
+    DibujarPlan(&grabador, plan, 1600.0f, 900.0f);
+    REQUIRE(grabador.imagenes_mem.size() == 1);
+    const auto& llamado = grabador.imagenes_mem[0];
+    CHECK(llamado.ancho == 2);
+    CHECK(llamado.alto == 2);
+    CHECK(llamado.x == doctest::Approx(400.0));
+    CHECK(llamado.y == doctest::Approx(225.0));
+    CHECK(llamado.w == doctest::Approx(800.0));
+    CHECK(llamado.h == doctest::Approx(450.0));
+    CHECK(llamado.primer_pixel == 90);
+    // Objetivo con la misma relación: sin letterbox, rect exacto.
+    CHECK(grabador.textos.empty());
+}
+
+TEST_CASE("v2: el texto plano (v1) sigue funcionando sin párrafos ricos") {
+    DiapositivaPptx d = DiapoEjemplo();
+    PlanRenderDirecto plan;
+    const ResolucionTema vacia;
+    const ResultadoRenderDirecto res =
+        RenderDirecto::ConstruirPlan(d, vacia, 16.0f / 9.0f, &plan);
+    REQUIRE(res.ok == true);
+    // Título + 3 párrafos: 4 pasos de texto, sin estilo explícito.
+    REQUIRE(plan.pasos.size() == 4);
+    CHECK(plan.pasos[0].tipo == PasoDibujo::Tipo::Titulo);
+    CHECK(plan.pasos[1].tipo == PasoDibujo::Tipo::Cuerpo);
+    // Estilo del tema intacto (60 px por defecto antes del ajuste).
+    CHECK(plan.pasos[1].estilo.tamano > 0.0f);
+    CHECK(res.avisos.empty());
+}

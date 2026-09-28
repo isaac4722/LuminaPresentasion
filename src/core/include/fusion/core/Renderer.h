@@ -62,6 +62,18 @@ public:
     virtual void DibujarImagen(const std::wstring& ruta,
                                float x, float y, float w, float h,
                                AjusteImagen ajuste) = 0;
+
+    // Imagen ya decodificada (RGBA 8 bits recto, memoria del núcleo:
+    // p. ej. media de un paquete PPTX). x/y/w/h en unidades del target,
+    // dibujo estirado al rect (el rect ya respeta el aspecto original).
+    // Impl. por defecto: no-op para no romper los implementadores que no
+    // la necesiten; la implementación D2D sí la pinta.
+    virtual void DibujarImagenMemoria(const unsigned char* rgba,
+                                      int ancho_px, int alto_px,
+                                      float x, float y, float w, float h) {
+        (void)rgba; (void)ancho_px; (void)alto_px;
+        (void)x; (void)y; (void)w; (void)h;
+    }
 };
 
 std::unique_ptr<Renderer> CrearRendererDirect2D();

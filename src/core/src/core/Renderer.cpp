@@ -29,23 +29,8 @@ using Microsoft::WRL::ComPtr;
 
 namespace fusion {
 
-Color Color::DesdeHex(const char* hex) {
-    Color c{0,0,0};
-    if (!hex) return c;
-    std::string s = hex;
-    if (!s.empty() && s[0] == '#') s = s.substr(1);
-    if (s.size() < 6) return c;
-    auto h2 = [](char ch) -> std::uint8_t {
-        if (ch >= '0' && ch <= '9') return ch - '0';
-        if (ch >= 'a' && ch <= 'f') return ch - 'a' + 10;
-        if (ch >= 'A' && ch <= 'F') return ch - 'A' + 10;
-        return 0;
-    };
-    c.r = (h2(s[0]) << 4) | h2(s[1]);
-    c.g = (h2(s[2]) << 4) | h2(s[3]);
-    c.b = (h2(s[4]) << 4) | h2(s[5]);
-    return c;
-}
+// Color::DesdeHex vive en RenderDirecto.cpp (parte portable): la usa
+// tanto el render directo (estilos por-run) como RendererDirect2D.
 
 // -------------------------------------------------------------------------
 // RendererNull — para tests
@@ -148,6 +133,14 @@ public:
         if (!rt_) return;
         rendirecto::DibujarImagenEnRT(rt_.Get(), wic_.Get(), ruta, ajuste,
                                       x, y, w, h);
+    }
+
+    void DibujarImagenMemoria(const unsigned char* rgba, int ancho_px,
+                              int alto_px, float x, float y, float w,
+                              float h) override {
+        if (!rt_) return;
+        rendirecto::DibujarImagenMemoriaEnRT(rt_.Get(), wic_.Get(), rgba,
+                                             ancho_px, alto_px, x, y, w, h);
     }
 
 private:
