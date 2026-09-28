@@ -34,11 +34,13 @@ private:
     QLabel*        lblVista_ = nullptr;
     QLabel*        lblEstado_ = nullptr;
 
-    // Paquete abierto y plan renderizable por diapositiva.
+    // Paquete abierto y plan renderizable por diapositiva. Los tipos del
+    // núcleo viven en fusion:: — en el header van SIEMPRE calificados
+    // (el "using namespace fusion;" del .cpp llega tarde al header).
     bool ok_ = false;
-    InfoPptx info_;
-    std::vector<DiapositivaPptx> diapositivas_;
-    std::unique_ptr<RasterizadorDirectoD2D> raster_;
+    fusion::InfoPptx info_;
+    std::vector<fusion::DiapositivaPptx> diapositivas_;
+    std::unique_ptr<fusion::RasterizadorDirectoD2D> raster_;
 };
 
 #endif // FUSION_QT_MAINWINDOW_H
