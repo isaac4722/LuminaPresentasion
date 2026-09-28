@@ -15,6 +15,10 @@
 #include "fusion/data/AhpFormat.h"
 #include "Navegacion.h"
 
+#define WIN32_LEAN_AND_MEAN
+#define NOMINMAX
+#include <windows.h>
+
 #include <atomic>
 #include <memory>
 #include <mutex>

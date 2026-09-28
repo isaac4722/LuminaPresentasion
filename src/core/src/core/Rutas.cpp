@@ -6,6 +6,7 @@
 #define NOMINMAX
 #include <windows.h>
 
+#include <cstring>
 #include <string>
 
 namespace fusion {

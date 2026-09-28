@@ -20,6 +20,7 @@
 #include "fusion/core/Rutas.h"
 
 #include <cstdio>
+#include <cstring>
 #include <string>
 
 namespace {

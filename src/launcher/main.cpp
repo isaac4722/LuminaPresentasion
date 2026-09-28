@@ -63,7 +63,7 @@ std::wstring RaizDatos() {
         wchar_t buf[MAX_PATH] = {0};
         DWORD n = GetEnvironmentVariableW(L"LOCALAPPDATA", buf, MAX_PATH);
         if (n > 0 && n < MAX_PATH) {
-            std::wstring dir = buf + (L"\\FUSION-HP");
+            std::wstring dir = std::wstring(buf) + L"\\FUSION-HP";
             CreateDirectoryW(dir.c_str(), nullptr);
             CreateDirectoryW((dir + L"\\runtime").c_str(), nullptr);
             return dir;
