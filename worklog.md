@@ -596,3 +596,20 @@ del launcher cuando falta .NET 4.8.
 - Pendiente para próximas sesiones: net35 dual-target (la capa
   compartida sigue en WinForms), subrayado por-run en el pintado D2D,
   formas vectoriales (prstGeom/custGeom) del pptx.
+
+Adenda de la sesión X — CI y publicación:
+
+- Runs de depuración MSVC (solo visibles en CI, el arnés local es gcc):
+  4d5c3dc rojo (falta shellapi.h y un wcslen sobre wstring en el
+  launcher; regex del redist casaba el final de FullName), d6bfea7 rojo
+  (MainWindow.h usaba los tipos del núcleo SIN calificar: viven en
+  fusion::; el "using namespace" del .cpp llega tarde al header),
+  c1346bb VERDE 10/10 (run 36461001702).
+- Tag v0.9.2 → run 36461656566 VERDE → release publicada con los 4
+  activos: FUSION-HP-portable-x86.zip (13,4 MB), FUSION-HP-portable-
+  x64.zip (15,5 MB), FusionHP-Setup-x86.exe (11,2 MB), FusionHP-Setup-
+  x64.exe (12,7 MB).
+- https://github.com/isaac4722/LuminaPresentasion/releases/tag/v0.9.2
+- Suite final: 136 casos / 1116 aserciones (gcc-14, 0 avisos) + 14
+  tests gestionados C# + doble arquitectura MSVC + gate + portable +
+  instaladores.
