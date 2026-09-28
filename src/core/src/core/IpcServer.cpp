@@ -88,7 +88,7 @@ void AtenderConexion(std::shared_ptr<EstadoIpc> e,
         // Framing: una línea por respuesta (clientes con ReadLine).
         if (r.raw_json.empty() || r.raw_json.back() != '\n')
             r.raw_json.push_back('\n');
-        if (!EscribirCliente(e, cli, r.raw_json)) break;
+        if (!EscribirCliente(*e, cli, r.raw_json)) break;
     }
 
     // Quitar la conexión de la lista de clientes.
