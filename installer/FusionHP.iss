@@ -1,11 +1,22 @@
 ; ============================================================================
-; FusionHP.iss — Instalador Inno Setup dual x86 + x64
+; FusionHP.iss — Instalador Inno Setup dual x86 + x64 de FUSION-HP
 ; Genera installer/Output/FusionHP-Setup-{arch}.exe
-; Definir /DARCH=x86 o /DARCH=x64 al invocar ISCC.exe
+;
+; Al invocar ISCC.exe:
+;   /DARCH=x86 | x64          → nombre de salida y arquitectura de destino
+;   /DPACKAGE=<ruta>          → árbol montado por build/empaquetar.ps1
+;                                (mismo árbol que el portable: una sola
+;                                fuente de verdad)
+; Ejemplo (CI o local):
+;   ISCC.exe installer\FusionHP.iss /DARCH=x64 /DPACKAGE=build\paquete\x64
 ; ============================================================================
 
 #ifndef ARCH
   #define ARCH "x86"
+#endif
+
+#ifndef PACKAGE
+  #define PACKAGE "paquete"
 #endif
 
 #if ARCH == "x64"
@@ -42,53 +53,27 @@ Name: "spanish"; MessagesFile: "compiler:Languages\Spanish.isl"
 
 [Tasks]
 Name: "desktopicon"; Description: "Crear icono en el escritorio"; GroupDescription: "Iconos:"
-Name: "quicklaunchicon"; Description: "Crear icono en la barra de tareas"; GroupDescription: "Iconos:"; OnlyBelowVersion: 0,6.1
 
 [Files]
-; Launcher
-Source: "..\src\launcher\build\bin\FusionHP.exe"; DestDir: "{app}"; Flags: ignoreversion
+; Árbol de paquete montado por build/empaquetar.ps1 (mismo que el portable).
+Source: "{#PACKAGE}\FusionHP.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#PACKAGE}\FusionCore.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#PACKAGE}\gestionado\*"; DestDir: "{app}\gestionado"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#PACKAGE}\qt\*"; DestDir: "{app}\qt"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#PACKAGE}\data\*"; DestDir: "{app}\data"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#PACKAGE}\LEEME.txt"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#PACKAGE}\LICENSE"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#PACKAGE}\THIRD_PARTY_LICENSES.txt"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#PACKAGE}\README.md"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
 
-; Núcleo
-Source: "..\src\core\build-{#ArchSuffix}\bin\FusionCore.exe"; DestDir: "{app}"; Flags: ignoreversion
-
-; Capa gestionada
-Source: "..\src\managed\FusionHP.Managed\bin\Release\net48\FusionHP.Managed.exe"; DestDir: "{app}\managed"; Flags: ignoreversion
-Source: "..\src\managed\FusionHP.Managed\bin\Release\net48\*.dll"; DestDir: "{app}\managed"; Flags: ignoreversion recursesubdirs createallsubdirs
-
-; Qt shell (si se compiló para esta arquitectura)
-#if ARCH == "x64"
-  Source: "..\src\qt-shell\build-x64\FusionQtShell.exe"; DestDir: "{app}\qt"; Flags: ignoreversion skipifsourcedoesntexist
-  Source: "C:\Qt\5.15.2\msvc2019_64\bin\Qt5Core.dll";  DestDir: "{app}\qt"; Flags: ignoreversion skipifsourcedoesntexist
-  Source: "C:\Qt\5.15.2\msvc2019_64\bin\Qt5Gui.dll";   DestDir: "{app}\qt"; Flags: ignoreversion skipifsourcedoesntexist
-  Source: "C:\Qt\5.15.2\msvc2019_64\bin\Qt5Widgets.dll"; DestDir: "{app}\qt"; Flags: ignoreversion skipifsourcedoesntexist
-  Source: "C:\Qt\5.15.2\msvc2019_64\plugins\platforms\qwindows.dll"; DestDir: "{app}\qt\platforms"; Flags: ignoreversion skipifsourcedoesntexist
-#else
-  Source: "..\src\qt-shell\build-x86\FusionQtShell.exe"; DestDir: "{app}\qt"; Flags: ignoreversion skipifsourcedoesntexist
-  Source: "C:\Qt\5.15.2\msvc2019\bin\Qt5Core.dll";  DestDir: "{app}\qt"; Flags: ignoreversion skipifsourcedoesntexist
-  Source: "C:\Qt\5.15.2\msvc2019\bin\Qt5Gui.dll";   DestDir: "{app}\qt"; Flags: ignoreversion skipifsourcedoesntexist
-  Source: "C:\Qt\5.15.2\msvc2019\bin\Qt5Widgets.dll"; DestDir: "{app}\qt"; Flags: ignoreversion skipifsourcedoesntexist
-  Source: "C:\Qt\5.15.2\msvc2019\plugins\platforms\qwindows.dll"; DestDir: "{app}\qt\platforms"; Flags: ignoreversion skipifsourcedoesntexist
-#endif
-
-; Datos
-Source: "..\data\schema\*"; DestDir: "{app}\data\schema"; Flags: ignoreversion recursesubdirs createallsubdirs
-Source: "..\data\bibles\*.fdb"; DestDir: "{app}\data\bibles"; Flags: ignoreversion skipifsourcedoesntexist
-Source: "..\data\bibles\README.md"; DestDir: "{app}\data\bibles"; Flags: ignoreversion
-Source: "..\data\assets\*"; DestDir: "{app}\data\assets"; Flags: ignoreversion recursesubdirs createallsubdirs
-Source: "..\data\samples\*"; DestDir: "{app}\data\samples"; Flags: ignoreversion
-
-; Licencias
-Source: "..\LICENSE"; DestDir: "{app}"; Flags: ignoreversion
-Source: "..\THIRD_PARTY_LICENSES.txt"; DestDir: "{app}"; Flags: ignoreversion
-
-; .NET 4.8 offline installer (lo deja al lado; lo arranca el launcher si falta)
+; Instalador offline de .NET 4.8 (opcional; lo arranca el launcher si falta)
 Source: "net48_offline\ndp48-x86-x64-offline.exe"; DestDir: "{app}\redist"; Flags: ignoreversion skipifsourcedoesntexist
 
 [Icons]
 Name: "{group}\FUSION-HP"; Filename: "{app}\FusionHP.exe"
+Name: "{group}\FUSION-HP (shell Qt)"; Filename: "{app}\qt\FusionQtShell.exe"
 Name: "{group}\Desinstalar FUSION-HP"; Filename: "{uninstallexe}"
 Name: "{commondesktop}\FUSION-HP"; Filename: "{app}\FusionHP.exe"; Tasks: desktopicon
-Name: "{userappdata}\Microsoft\Internet Explorer\Quick Launch\User Pinned\TaskBar\FUSION-HP"; Filename: "{app}\FusionHP.exe"; Tasks: quicklaunchicon
 
 [Run]
 ; El launcher detecta .NET 4.8 por sí mismo y arranca el instalador si falta.

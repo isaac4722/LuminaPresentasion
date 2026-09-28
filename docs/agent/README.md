@@ -14,6 +14,11 @@ con `AGENT.md`, este último prevalece.
 | `build_environment.md` | Preparación del toolchain MSVC + .NET + Qt + Inno Setup. |
 | `quality_gate.md`      | Reglas del gate de calidad (qué debe estar verde).       |
 | `conventions.md`       | Convenciones de código C++/C# y de commit.               |
+| `themes.md`            | Herencia de temas 4 niveles + informe de fidelidad.      |
+| `pptx_directo.md`      | Lector directo de paquetes PPTX (modo "directo").        |
+| `import_pptx.md`       | Importador PPTX → ahp.v1 (capa C#).                      |
+| `exportadores.md`      | Exportadores reales del núcleo (pptx/pdf/png).           |
+| `paquetes.md`          | Portable dual e instaladores en CI.                      |
 
 ## Cómo usar estos documentos
 

@@ -1,0 +1,34 @@
+FUSION-HP — Edición portable (Windows)
+======================================
+
+FUSION-HP es un programa de proyección y manejo multimedia para
+servicios de adoracion: cantos, biblias, diapositivas PPTX, videos e
+imagenes. Todo funciona 100% sin conexion, no escribe en el Registro
+de Windows y no envia ni recibe datos.
+
+COMO SE USA
+-----------
+1. Ejecuta FusionHP.exe (esta carpeta). El launcher:
+   - verifica .NET Framework 4.8 (incluido en Windows 10/11 actual;
+     si falta, usa redist\ndp48-x86-x64-offline.exe si lo colocas ahi),
+   - arranca el nucleo (FusionCore.exe), dueño de la proyeccion,
+   - abre la consola gestionada (gestionado\FusionHP.Managed.exe).
+2. Alternativa de escritorio: qt\FusionQtShell.exe.
+3. Para desinstalar: borra esta carpeta. No queda nada en el sistema.
+
+CONTENIDO
+---------
+  FusionHP.exe        Launcher nativo (x86).
+  FusionCore.exe      Nucleo C++17 de proyeccion.
+  gestionado\         Consola del operador (C#/.NET 4.8).
+  qt\                 Shell de escritorio Qt 5.15.2 y sus DLL.
+  data\               Esquemas, biblia RVR1909 incluida y muestras.
+  runtime\            (se crea al usar) Datos y bitacoras locales.
+
+REQUISITOS
+----------
+  Windows 7 SP1 o superior, en 32 o 64 bits segun tu descarga
+  (carpeta x86 = 32 bits, x64 = 64 bits). El instalador offline de
+  .NET 4.8 NO viene incluido por tamano: descargalo de
+  https://dotnet.microsoft.com/download/dotnet-framework/net48
+  y ponlo en redist\ si tu equipo no tiene .NET 4.8.

@@ -200,6 +200,16 @@ jobs:
         working-directory: src/qt-shell
         run: cmake --build build-${{ matrix.arquitectura }} --parallel
 
+      # Desplegar las DLL de Qt junto al exe: el artefacto sale completo
+      # para el portable y el instalador (build/empaquetar.ps1).
+      - name: Desplegar Qt (windeployqt)
+        shell: pwsh
+        run: |
+          $qtbin = if ("${{ matrix.arquitectura }}" -eq "x86") { "C:\Qt\5.15.2\msvc2019\bin" } else { "C:\Qt\5.15.2\msvc2019_64\bin" }
+          & "$qtbin\windeployqt.exe" --release --no-translations "src\qt-shell\build-${{ matrix.arquitectura }}\FusionQtShell.exe"
+          if ($LASTEXITCODE -ne 0) { Write-Host "##[error]windeployqt falló"; exit 1 }
+          Get-ChildItem "src\qt-shell\build-${{ matrix.arquitectura }}" | Select-Object -ExpandProperty Name
+
       - name: Subir artefacto
         uses: actions/upload-artifact@v4
         with:
@@ -268,13 +278,54 @@ jobs:
           path: build/artifacts/gate_report.json
 
   # ===========================================================================
-  # Job 6: Empaquetar release (solo en tag v*)
+  # Job 6: Portable dual (un .zip autocontenido por arquitectura)
   # ===========================================================================
-  pack:
-    name: Empaquetar release
+  portable:
+    name: Portable ${{ matrix.arquitectura }}
     runs-on: windows-2022
     needs: [gate]
-    if: startsWith(github.ref, 'refs/tags/v')
+    strategy:
+      fail-fast: false
+      matrix:
+        arquitectura: [x86, x64]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Descargar artefactos necesarios
+        uses: actions/download-artifact@v4
+        with:
+          path: build/artifacts
+
+      - name: Montar el árbol portable
+        shell: pwsh
+        run: |
+          .\build\empaquetar.ps1 -Arch ${{ matrix.arquitectura }} `
+            -Artefactos build\artifacts `
+            -Destino build\portable\FUSION-HP
+
+      - name: Comprimir el portable
+        shell: pwsh
+        run: |
+          Compress-Archive -Path build\portable\FUSION-HP\* `
+            -DestinationPath build\FUSION-HP-portable-${{ matrix.arquitectura }}.zip
+          Get-Item build\FUSION-HP-portable-*.zip | Select-Object Name, Length
+
+      - name: Subir portable
+        uses: actions/upload-artifact@v4
+        with:
+          name: portable-${{ matrix.arquitectura }}
+          path: build/FUSION-HP-portable-${{ matrix.arquitectura }}.zip
+          retention-days: 30
+
+  # ===========================================================================
+  # Job 7: Instaladores Inno Setup dual (en cada push; el árbol lo monta
+  # el mismo empaquetar.ps1 que el portable — una sola fuente de verdad)
+  # ===========================================================================
+  instaladores:
+    name: Instaladores dual (Inno Setup)
+    runs-on: windows-2022
+    needs: [gate]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -284,28 +335,57 @@ jobs:
         with:
           path: build/artifacts
 
-      - name: Inno Setup (x86)
+      - name: Montar los árboles de paquete (x86 y x64)
+        shell: pwsh
         run: |
-          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer\FusionHP.iss /DARCH=x86
+          .\build\empaquetar.ps1 -Arch x86 `
+            -Artefactos build\artifacts -Destino build\paquete\x86
+          .\build\empaquetar.ps1 -Arch x64 `
+            -Artefactos build\artifacts -Destino build\paquete\x64
+
+      - name: Inno Setup (x86)
+        shell: pwsh
+        run: |
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" /DARCH=x86 /DPACKAGE=build\paquete\x86 installer\FusionHP.iss
+          if ($LASTEXITCODE -ne 0) { exit 1 }
 
       - name: Inno Setup (x64)
+        shell: pwsh
         run: |
-          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer\FusionHP.iss /DARCH=x64
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" /DARCH=x64 /DPACKAGE=build\paquete\x64 installer\FusionHP.iss
+          if ($LASTEXITCODE -ne 0) { exit 1 }
 
       - name: Subir instaladores
         uses: actions/upload-artifact@v4
         with:
-          name: installers
+          name: instaladores
           path: |
             installer/Output/FusionHP-Setup-x86.exe
             installer/Output/FusionHP-Setup-x64.exe
+          retention-days: 30
+
+  # ===========================================================================
+  # Job 8: Release (solo en tag v*): adjunta instaladores y portables
+  # ===========================================================================
+  release:
+    name: Publicar release
+    runs-on: windows-2022
+    needs: [instaladores, portable]
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - name: Descargar instaladores y portables
+        uses: actions/download-artifact@v4
+        with:
+          path: build/publicar
 
       - name: Release en GitHub
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            installer/Output/FusionHP-Setup-x86.exe
-            installer/Output/FusionHP-Setup-x64.exe
+            build/publicar/instaladores/FusionHP-Setup-x86.exe
+            build/publicar/instaladores/FusionHP-Setup-x64.exe
+            build/publicar/portable-x86/FUSION-HP-portable-x86.zip
+            build/publicar/portable-x64/FUSION-HP-portable-x64.zip
           draft: true
           name: ${{ github.ref_name }}
           generate_release_notes: true
