@@ -17,6 +17,7 @@
 
 #include "fusion/core/Exportador.h"
 
+#include "ImagenesExport.h"
 #include "ZipInterno.h"
 
 #include <cstdint>
@@ -82,12 +83,19 @@ const char kNs[] =
 
 // Cuadro de texto con párrafos. El primer párrafo es el título (si lo
 // hay) y el resto el cuerpo; los avisos van en cursiva pequeña.
-std::string CuadroTexto(const std::vector<std::string>& parrafos) {
+// `id` evita colisiones de cNvPr cuando la diapositiva lleva además una
+// imagen (p:pic id=2 → texto id=3). off_y/cy permiten la banda superior
+// cuando el cuadro acompaña a una imagen a pantalla completa.
+std::string CuadroTexto(const std::vector<std::string>& parrafos,
+                        int id = 2, int off_y = 609600, int cy = 5638800) {
     std::string xml;
-    xml += "<p:sp><p:nvSpPr><p:cNvPr id=\"2\" name=\"Fusion\"/>";
+    xml += "<p:sp><p:nvSpPr><p:cNvPr id=\"" + std::to_string(id) +
+           "\" name=\"Fusion\"/>";
     xml += "<p:cNvSpPr txBox=\"1\"/><p:nvPr/></p:nvSpPr>";
-    xml += "<p:spPr><a:xfrm><a:off x=\"838200\" y=\"609600\"/>";
-    xml += "<a:ext cx=\"10515600\" cy=\"5638800\"/></a:xfrm>";
+    xml += "<p:spPr><a:xfrm><a:off x=\"838200\" y=\"" +
+           std::to_string(off_y) + "\"/>";
+    xml += "<a:ext cx=\"10515600\" cy=\"" + std::to_string(cy) +
+           "\"/></a:xfrm>";
     xml += "<a:prstGeom prst=\"rect\"><a:avLst/></a:prstGeom></p:spPr>";
     xml += "<p:txBody><a:bodyPr wrap=\"square\"><a:normAutofit/></a:bodyPr>"
            "<a:lstStyle/>";
@@ -114,12 +122,39 @@ std::string CuadroTexto(const std::vector<std::string>& parrafos) {
     return xml;
 }
 
-std::string XmlDiapositiva(const std::vector<std::string>& parrafos) {
+// Imagen a pantalla completa (p:pic). `rid` es la relación del blip.
+std::string XmlImagen(const std::string& rid) {
+    std::string xml;
+    xml += "<p:pic><p:nvPicPr><p:cNvPr id=\"2\" name=\"Imagen\"/>"
+           "<p:cNvPicPr><a:picLocks noChangeAspect=\"1\"/></p:cNvPicPr>"
+           "<p:nvPr/></p:nvPicPr>";
+    xml += "<p:blipFill><a:blip r:embed=\"" + rid + "\"/>"
+           "<a:stretch><a:fillRect/></a:stretch></p:blipFill>";
+    xml += "<p:spPr><a:xfrm><a:off x=\"0\" y=\"0\"/>"
+           "<a:ext cx=\"12192000\" cy=\"6858000\"/></a:xfrm>"
+           "<a:prstGeom prst=\"rect\"><a:avLst/></a:prstGeom></p:spPr>"
+           "</p:pic>";
+    return xml;
+}
+
+std::string XmlDiapositiva(const std::vector<std::string>& parrafos,
+                           const std::string& fondo6 = "",
+                           const std::string& pic = "") {
     std::string xml = kDecl;
     xml += "<p:sld " + std::string(kNs) + "><p:cSld><p:spTree>";
+    if (!fondo6.empty()) {
+        // Fondo sólido del Escenario (herencia 5.4 / doc 9.2.6): lo que
+        // el operador fijó para el escenario viaja al paquete exportado.
+        xml += "<p:bg><p:bgPr><a:solidFill><a:srgbClr val=\"" + fondo6 +
+               "\"/></a:solidFill><a:effectLst/></p:bgPr></p:bg>";
+    }
     xml += "<p:nvGrpSpPr><p:cNvPr id=\"1\" name=\"\"/><p:cNvGrpSpPr/>"
            "<p:nvPr/></p:nvGrpSpPr><p:grpSpPr/>";
-    xml += CuadroTexto(parrafos);
+    xml += pic;
+    // Con imagen a pantalla completa, el cuadro de texto (solo título)
+    // se coloca en la banda superior con otro id.
+    xml += pic.empty() ? CuadroTexto(parrafos, 2)
+                       : CuadroTexto(parrafos, 3, 0, 914400);
     xml += "</p:spTree></p:cSld><p:clrMapOvr><a:masterClrMapping/>"
            "</p:clrMapOvr></p:sld>";
     return xml;
@@ -151,14 +186,25 @@ const char kTipoViewProps[] =
 const char kTipoTableStyles[] =
     "http://schemas.openxmlformats.org/officeDocument/2006/relationships/"
     "tableStyles";
+const char kTipoImagen[] =
+    "http://schemas.openxmlformats.org/officeDocument/2006/relationships/"
+    "image";
 
-std::string XmlContentTypes(int n_diapos) {
+// FondoHex6 vive en ImagenesExport.h (imgexp), compartida con el PDF.
+
+std::string XmlContentTypes(int n_diapos,
+                            const std::vector<std::string>& extensiones) {
     std::string xml = kDecl;
     xml += "<Types xmlns=\"http://schemas.openxmlformats.org/package/2006/"
            "content-types\">";
     xml += "<Default Extension=\"rels\" ContentType=\"application/vnd."
            "openxmlformats-package.relationships+xml\"/>";
     xml += "<Default Extension=\"xml\" ContentType=\"application/xml\"/>";
+    // Medios incrustados: un Default por extensión realmente usada.
+    for (const auto& ext : extensiones) {
+        xml += "<Default Extension=\"" + ext + "\" ContentType=\"" +
+               (ext == "png" ? "image/png" : "image/jpeg") + "\"/>";
+    }
     xml += "<Override PartName=\"/ppt/presentation.xml\" ContentType="
            "\"application/vnd.openxmlformats-officedocument."
            "presentationml.presentation.main+xml\"/>";
@@ -315,30 +361,105 @@ bool Exportador::ExportarPptx(const Programa& p, const std::string& ruta_salida,
         PlanExport::EnumerarUnidades(p);
 
     int con_medio = 0;
+    int imagenes_incrustadas = 0;
     std::vector<std::string> xml_diapos;
+    std::vector<std::string> rels_diapos;
+    std::vector<std::string> partes_media;   // nombre de parte en el zip
+    std::vector<std::string> bytes_media;
+    std::vector<std::string> extensiones_media;
     xml_diapos.reserve(unidades.size());
+    rels_diapos.reserve(unidades.size());
+
     for (const auto& u : unidades) {
         std::vector<std::string> parrafos;
-        if (!u.titulo.empty()) parrafos.push_back(u.titulo);
-        LineasDeUnidad(u, &parrafos);
-        if (u.tipo == UnidadExport::Tipo::Medio ||
-            u.tipo == UnidadExport::Tipo::Pptx) {
-            parrafos.push_back(u.tipo == UnidadExport::Tipo::Pptx
-                                   ? "(paquete pptx no incrustado, v1)"
-                                   : "(medio no incrustado, v1)");
-            ++con_medio;
+        std::string pic;
+        std::string fondo6;
+
+        // Fondo sólido del Escenario (doc 5.4/9.2.6), si es un color válido.
+        if (u.indice_escenario >= 1 &&
+            u.indice_escenario <= static_cast<int>(p.escenarios.size())) {
+            fondo6 = imgexp::FondoHex6(
+                p.escenarios[static_cast<size_t>(u.indice_escenario - 1)]
+                    .fondo);
         }
-        xml_diapos.push_back(XmlDiapositiva(parrafos));
+
+        const bool es_medio = (u.tipo == UnidadExport::Tipo::Medio ||
+                               u.tipo == UnidadExport::Tipo::Pptx);
+        const imgexp::TipoImagen ti =
+            es_medio ? imgexp::TipoPorRuta(u.ruta) : imgexp::TipoImagen::Ninguna;
+
+        if (es_medio && ti != imgexp::TipoImagen::Ninguna) {
+            // Imagen PNG/JPEG: se incrusta en el paquete (p:pic).
+            std::string bytes;
+            if (imgexp::LeerArchivo(u.ruta, &bytes)) {
+                const int num = static_cast<int>(partes_media.size()) + 1;
+                const std::string ext =
+                    ti == imgexp::TipoImagen::Png ? "png" : "jpeg";
+                const std::string parte =
+                    "ppt/media/image" + std::to_string(num) + "." + ext;
+                partes_media.push_back(parte);
+                bytes_media.push_back(bytes);
+                bool ext_nueva = true;
+                for (const auto& e : extensiones_media)
+                    if (e == ext) { ext_nueva = false; break; }
+                if (ext_nueva) extensiones_media.push_back(ext);
+                pic = XmlImagen("rId2");
+                ++imagenes_incrustadas;
+                // Solo el título en la banda superior (la imagen ya es
+                // el contenido).
+                if (!u.titulo.empty()) parrafos.push_back(u.titulo);
+            } else {
+                // Explícito, no silencioso: referencia + aviso.
+                if (!u.titulo.empty()) parrafos.push_back(u.titulo);
+                parrafos.push_back(u.ruta);
+                parrafos.push_back("(imagen no incrustada: no se pudo "
+                                   "leer el archivo)");
+                out->avisos.push_back("No se pudo leer la imagen '" +
+                                      u.ruta + "': va como referencia");
+                ++con_medio;
+            }
+        } else {
+            if (!u.titulo.empty()) parrafos.push_back(u.titulo);
+            LineasDeUnidad(u, &parrafos);
+            if (es_medio) {
+                parrafos.push_back(u.tipo == UnidadExport::Tipo::Pptx
+                                       ? "(paquete pptx referenciado, "
+                                         "no incrustado)"
+                                       : "(medio referenciado, "
+                                         "no incrustado)");
+                ++con_medio;
+            }
+        }
+
+        xml_diapos.push_back(XmlDiapositiva(parrafos, fondo6, pic));
+
+        // Relaciones de la diapositiva: layout + imagen si la hay (rId2).
+        std::string rels = std::string(kDecl) + "<Relationships xmlns=\"" +
+                           kTipoRels + "\">";
+        rels += std::string("<Relationship Id=\"rId1\" Type=\"") +
+                kTipoLayout + "\" Target=\"../slideLayouts/slideLayout1.xml\"/>";
+        if (!pic.empty()) {
+            rels += std::string("<Relationship Id=\"rId2\" Type=\"") +
+                    kTipoImagen + "\" Target=\"../media/image" +
+                    std::to_string(partes_media.size()) + "." +
+                    extensiones_media.back() + "\"/>";
+        }
+        rels += "</Relationships>";
+        rels_diapos.push_back(rels);
+    }
+    if (imagenes_incrustadas > 0) {
+        out->avisos.push_back(std::to_string(imagenes_incrustadas) +
+                              " imagen(es) incrustada(s) en el paquete");
     }
     if (con_medio > 0) {
         out->avisos.push_back(std::to_string(con_medio) +
                               " unidad(es) con medio/pptx referenciado pero "
-                              "no incrustado (alcance v1)");
+                              "no incrustado");
     }
 
     const int n = static_cast<int>(xml_diapos.size());
     zipint::EscritorZip z;
-    z.Agregar("[Content_Types].xml", XmlContentTypes(n));
+    z.Agregar("[Content_Types].xml", XmlContentTypes(n, extensiones_media));
 
     std::string rels_raiz = kDecl;
     rels_raiz += "<Relationships xmlns=\"" + std::string(kTipoRels) + "\">";
@@ -409,11 +530,12 @@ bool Exportador::ExportarPptx(const Programa& p, const std::string& ruta_salida,
                   xml_diapos[i]);
         z.Agregar("ppt/slides/_rels/slide" + std::to_string(1 + i) +
                       ".xml.rels",
-                  std::string(kDecl) + "<Relationships xmlns=\"" +
-                      kTipoRels + "\">"
-                      "<Relationship Id=\"rId1\" Type=\"" + kTipoLayout +
-                      "\" Target=\"../slideLayouts/slideLayout1.xml\"/>"
-                      "</Relationships>");
+                  rels_diapos[static_cast<size_t>(i)]);
+    }
+
+    // Medios incrustados (ppt/media/imageN.png|jpeg).
+    for (size_t m = 0; m < partes_media.size(); ++m) {
+        z.Agregar(partes_media[m], bytes_media[m]);
     }
 
     const std::string paquete = z.Terminar();

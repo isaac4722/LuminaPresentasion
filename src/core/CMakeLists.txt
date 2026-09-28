@@ -172,6 +172,7 @@ if(FUSION_BUILD_TESTS)
     )
     target_include_directories(fusion_tests PRIVATE
         ${FUSION_INCLUDE_DIR}
+        ${FUSION_SRC_DIR}/core
         ${FUSION_THIRD_PARTY}
         ${FUSION_GENERATED_DIR}
     )

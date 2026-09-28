@@ -31,18 +31,9 @@ namespace fusion {
 
 namespace {
 
-// ---------------------------------------------------------------------------
-// Adler32 (RFC 1950) para el flujo zlib del IDAT.
-// ---------------------------------------------------------------------------
-
-uint32_t Adler32(const unsigned char* d, size_t n) {
-    uint32_t a = 1, b = 0;
-    for (size_t i = 0; i < n; ++i) {
-        a = (a + d[i]) % 65521u;
-        b = (b + a) % 65521u;
-    }
-    return (b << 16) | a;
-}
+// Adler32 y ZlibAlmacenado viven en ZipInterno.h (fusion::zipint),
+// compartidos con el PDF (FlateDecode) y el lector/escritor ZIP.
+using fusion::zipint::ZlibAlmacenado;
 
 void Poner32BE(std::string* s, uint32_t v) {
     s->push_back(static_cast<char>((v >> 24) & 0xFF));
@@ -58,34 +49,6 @@ void Chunk(std::string* out, const char tipo[4], const std::string& datos) {
     std::string crc_in(tipo, tipo + 4);
     crc_in += datos;
     Poner32BE(out, zipint::Crc32(crc_in));
-}
-
-// Flujo zlib (RFC 1950): cabecera 0x78 0x01 + bloques almacenados +
-// adler32 en orden de red.
-std::string ZlibAlmacenado(const unsigned char* d, size_t n) {
-    std::string out;
-    out.push_back(static_cast<char>(0x78));
-    out.push_back(static_cast<char>(0x01));
-    size_t i = 0;
-    while (i < n) {
-        const size_t bloque = (n - i > 65535) ? 65535 : (n - i);
-        const bool ultimo = (i + bloque == n);
-        out.push_back(ultimo ? static_cast<char>(1) : static_cast<char>(0));
-        out.push_back(static_cast<char>(bloque & 0xFF));
-        out.push_back(static_cast<char>((bloque >> 8) & 0xFF));
-        out.push_back(static_cast<char>(~bloque & 0xFF));
-        out.push_back(static_cast<char>((~bloque >> 8) & 0xFF));
-        out.append(reinterpret_cast<const char*>(d + i), bloque);
-        i += bloque;
-    }
-    if (n == 0) {  // un bloque almacenado vacío también es válido
-        out.push_back(static_cast<char>(1));
-        out.push_back(0); out.push_back(0);
-        out.push_back(static_cast<char>(0xFF));
-        out.push_back(static_cast<char>(0xFF));
-    }
-    Poner32BE(&out, Adler32(d, n));
-    return out;
 }
 
 bool EscribirArchivo(const std::string& ruta, const std::string& bytes) {

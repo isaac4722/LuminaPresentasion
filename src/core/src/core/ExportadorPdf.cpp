@@ -6,9 +6,19 @@
 // directos a un byte, sin incrustar fuentes), y corrientes de texto
 // sin comprimir. La tabla xref se calcula byte a byte: Acrobat y
 // visores exigentes la exigen exacta.
+//
+// Imágenes (incrustación 9.3): JPEG con paso directo /DCTDecode (los
+// bytes del archivo van tal cual) y PNG decodificado a RGB con
+// /FlateDecode (el flujo zlib de bloques almacenados de ZipInterno.h).
+// Colocación contain centrada en la página. Lo no soportado (paleta,
+// entrelazado, archivos ilegibles) va como referencia textual con aviso.
 
 #include "fusion/core/Exportador.h"
 
+#include "ImagenesExport.h"
+#include "ZipInterno.h"
+
+#include <algorithm>
 #include <cstdio>
 #include <cstdint>
 #include <string>
@@ -170,19 +180,99 @@ bool Exportador::ExportarPdf(const Programa& p, const std::string& ruta_salida,
     const std::vector<UnidadExport> unidades =
         PlanExport::EnumerarUnidades(p);
 
-    // Numeración determinista de objetos:
-    //   1 catálogo, 2 páginas, 3/4 fuentes, página i → 5+2i, contenido → 6+2i.
+    // Numeración dinámica y determinista: 1 catálogo, 2 páginas, 3/4
+    // fuentes; por página, en orden: XObjects de imagen (si los hay),
+    // corriente de contenido y objeto de página.
     std::string kids;
     int paginas_con_recorte = 0;
-    std::vector<std::string> objetos_pagina;
-    objetos_pagina.reserve(unidades.size() * 2);
+    int imagenes_incrustadas = 0;
+    std::vector<std::string> objetos;
+    auto proximo = [&objetos]() {
+        return static_cast<int>(5 + objetos.size());
+    };
 
     for (size_t i = 0; i < unidades.size(); ++i) {
         const UnidadExport& u = unidades[i];
-        const size_t idx_pagina = 5 + 2 * i;
-        const size_t idx_contenido = idx_pagina + 1;
-        kids += std::to_string(idx_pagina) + " 0 R ";
 
+        // Fondo sólido del Escenario (doc 5.4/9.2.6) para la página.
+        std::string fondo6;
+        if (u.indice_escenario >= 1 &&
+            u.indice_escenario <= static_cast<int>(p.escenarios.size())) {
+            fondo6 = imgexp::FondoHex6(
+                p.escenarios[static_cast<size_t>(u.indice_escenario - 1)]
+                    .fondo);
+        }
+
+        // --- Imagen incrustada (si procede) ---------------------------
+        std::string xobj_recursos;   // "/XObject << /Im1 N 0 R >>"
+        std::string colocado;        // operación de colocación (cm/Do)
+        const bool es_medio = u.tipo == UnidadExport::Tipo::Medio;
+        const imgexp::TipoImagen ti =
+            es_medio ? imgexp::TipoPorRuta(u.ruta) : imgexp::TipoImagen::Ninguna;
+        if (es_medio && ti != imgexp::TipoImagen::Ninguna) {
+            std::string bytes;
+            if (!imgexp::LeerArchivo(u.ruta, &bytes)) {
+                out->avisos.push_back("No se pudo leer la imagen '" +
+                                      u.ruta + "': va como referencia");
+            } else {
+                int w_img = 0, h_img = 0;
+                std::string datos;
+                const char* filtro = nullptr;
+                if (ti == imgexp::TipoImagen::Jpeg) {
+                    if (imgexp::DimensionesJpeg(bytes, &w_img, &h_img)) {
+                        datos = bytes;
+                        filtro = "/DCTDecode";
+                    } else {
+                        out->avisos.push_back("JPEG ilegible '" + u.ruta +
+                                              "': va como referencia");
+                    }
+                } else {
+                    const imgexp::PngDecodificado dec =
+                        imgexp::DecodificarPng(bytes);
+                    if (dec.ok) {
+                        w_img = dec.ancho;
+                        h_img = dec.alto;
+                        datos = zipint::ZlibAlmacenado(
+                            reinterpret_cast<const unsigned char*>(
+                                dec.rgb.data()),
+                            dec.rgb.size());
+                        filtro = "/FlateDecode";
+                    } else {
+                        out->avisos.push_back("PNG no soportado '" + u.ruta +
+                                              "' (" + dec.msg +
+                                              "): va como referencia");
+                    }
+                }
+                if (filtro) {
+                    const int num_obj = proximo();
+                    objetos.push_back(
+                        "<< /Type /XObject /Subtype /Image /Width " +
+                        std::to_string(w_img) + " /Height " +
+                        std::to_string(h_img) +
+                        " /ColorSpace /DeviceRGB /BitsPerComponent 8" +
+                        std::string(" /Filter ") + filtro + " /Length " +
+                        std::to_string(datos.size()) +
+                        " >>\nstream\n" + datos + "\nendstream");
+                    xobj_recursos = "/XObject << /Im1 " +
+                                    std::to_string(num_obj) + " 0 R >>";
+                    // Colocación contain centrada (960x540 pt).
+                    const double escala = std::min(
+                        960.0 / w_img, 540.0 / static_cast<double>(h_img));
+                    const double w_pt = w_img * escala;
+                    const double h_pt = h_img * escala;
+                    const double x = (960.0 - w_pt) / 2.0;
+                    const double y = (540.0 - h_pt) / 2.0;
+                    char cm[96];
+                    std::snprintf(cm, sizeof(cm),
+                                  "q %.2f 0 0 %.2f %.2f %.2f cm /Im1 Do Q\n",
+                                  escala, escala, x, y);
+                    colocado = cm;
+                    ++imagenes_incrustadas;
+                }
+            }
+        }
+
+        // --- Texto -------------------------------------------------------
         std::vector<std::string> lineas;
         if (!u.titulo.empty()) lineas.push_back(u.titulo);
         if (u.tipo == UnidadExport::Tipo::Texto) {
@@ -194,11 +284,13 @@ bool Exportador::ExportarPdf(const Programa& p, const std::string& ruta_salida,
                 }
                 lineas.push_back(trozo);
             }
-        } else {
+        } else if (!(es_medio && !colocado.empty())) {
+            // Medio sin imagen incrustada: referencia textual explícita.
             lineas.push_back(u.ruta.empty() ? "(sin archivo)" : u.ruta);
             lineas.push_back(u.tipo == UnidadExport::Tipo::Pptx
-                                 ? "(paquete pptx no incrustado, v1)"
-                                 : "(medio no incrustado, v1)");
+                                 ? "(paquete pptx referenciado, "
+                                   "no incrustado)"
+                                 : "(medio referenciado, no incrustado)");
         }
 
         // Envolver: el título es la línea 0.
@@ -208,6 +300,17 @@ bool Exportador::ExportarPdf(const Programa& p, const std::string& ruta_salida,
             Envolver(lineas[k], &cuerpo_envuelto);
 
         std::string st;
+        // Fondo del escenario: rectángulo de color a página completa.
+        if (!fondo6.empty()) {
+            const int rv = std::stoi(fondo6.substr(0, 2), nullptr, 16);
+            const int gv = std::stoi(fondo6.substr(2, 2), nullptr, 16);
+            const int bv = std::stoi(fondo6.substr(4, 2), nullptr, 16);
+            char bg[64];
+            std::snprintf(bg, sizeof(bg), "%.3f %.3f %.3f rg 0 0 960 540 re f\n",
+                          rv / 255.0, gv / 255.0, bv / 255.0);
+            st += bg;
+        }
+        st += colocado;
         int y = 470;
         for (const auto& t : titulo_envuelto) {
             if (y < 60) break;
@@ -223,16 +326,23 @@ bool Exportador::ExportarPdf(const Programa& p, const std::string& ruta_salida,
             y -= 26;
         }
 
-        const std::string cuerpo_stream =
+        const int num_contenido = proximo();
+        objetos.push_back(
             "<< /Length " + std::to_string(st.size()) + " >>\nstream\n" + st +
-            "endstream";
-        objetos_pagina.push_back(
+            "endstream");
+        const int num_pagina = proximo();
+        objetos.push_back(
             "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 960 540] "
-            "/Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> "
-            "/Contents " + std::to_string(idx_contenido) + " 0 R >>");
-        objetos_pagina.push_back(cuerpo_stream);
+            "/Resources << /Font << /F1 3 0 R /F2 4 0 R >> " +
+            xobj_recursos + " >> "
+            "/Contents " + std::to_string(num_contenido) + " 0 R >>");
+        kids += std::to_string(num_pagina) + " 0 R ";
     }
 
+    if (imagenes_incrustadas > 0) {
+        out->avisos.push_back(std::to_string(imagenes_incrustadas) +
+                              " imagen(es) incrustada(s) en el PDF");
+    }
     if (paginas_con_recorte > 0) {
         out->avisos.push_back(std::to_string(paginas_con_recorte) +
                               " página(s) con texto recortado por no caber "
@@ -247,7 +357,7 @@ bool Exportador::ExportarPdf(const Programa& p, const std::string& ruta_salida,
                "/Encoding /WinAnsiEncoding >>");
     pdf.Objeto("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold "
                "/Encoding /WinAnsiEncoding >>");
-    for (const auto& obj : objetos_pagina) pdf.Objeto(obj);
+    for (const auto& obj : objetos) pdf.Objeto(obj);
 
     if (!EscribirArchivo(ruta_salida, pdf.Terminar())) {
         out->msg_error = "no se pudo escribir '" + ruta_salida + "'";

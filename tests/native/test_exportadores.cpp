@@ -256,10 +256,12 @@ TEST_CASE("ExportarPptx: round-trip — el lector del núcleo relee el paquete")
     CHECK(diapos[0].parrafos[0] == "linea 1");
     // Diapositiva 4: el versículo.
     CHECK(diapos[3].parrafos[0] == "Alzad oh puertas");
-    // Diapositiva 5: referencia al medio + aviso.
+    // Diapositiva 5: referencia al medio + aviso. La ruta "portada.png"
+    // NO existe en el disco de pruebas: va como referencia con aviso
+    // explícito (nada silencioso).
     REQUIRE(diapos[4].parrafos.size() == 2);
     CHECK(diapos[4].parrafos[0] == "portada.png");
-    CHECK(diapos[4].parrafos[1].find("v1") != std::string::npos);
+    CHECK(diapos[4].parrafos[1].find("no incrustada") != std::string::npos);
 
     bool avisa_medio = false;
     for (const auto& a : out.avisos)
@@ -575,4 +577,335 @@ TEST_CASE("ExportarImagenes: sin rasterizador y programa vacío") {
     ResultadoExport out2;
     CHECK_FALSE(Exportador::ExportarImagenes(vacio, ".", raster, &out2));
     CHECK(out2.msg_error == "el programa no tiene escenarios que exportar");
+}
+
+// ---------------------------------------------------------------------------
+// Incrustación de imágenes (9.3): decodificador PNG, dimensiones JPEG y
+// su paso por los exportadores PPTX/PDF.
+// ---------------------------------------------------------------------------
+
+#include "ZipInterno.h"
+#include "ImagenesExport.h"
+
+#include <algorithm>
+#include <fstream>
+#include <iterator>
+
+namespace {
+
+void Poner32BETest(std::string* s, uint32_t v) {
+    s->push_back(static_cast<char>((v >> 24) & 0xFF));
+    s->push_back(static_cast<char>((v >> 16) & 0xFF));
+    s->push_back(static_cast<char>((v >> 8) & 0xFF));
+    s->push_back(static_cast<char>(v & 0xFF));
+}
+
+void ChunkTest(std::string* out, const char tipo[4], const std::string& datos) {
+    Poner32BETest(out, static_cast<uint32_t>(datos.size()));
+    out->append(tipo, 4);
+    out->append(datos);
+    std::string crc_in(tipo, tipo + 4);
+    crc_in += datos;
+    Poner32BETest(out, Crc32Test(reinterpret_cast<const unsigned char*>(
+                                     crc_in.data()),
+                                 crc_in.size()));
+}
+
+std::string LeerTodo(const std::string& ruta) {
+    std::ifstream f(ruta, std::ios::binary);
+    return std::string((std::istreambuf_iterator<char>(f)),
+                       std::istreambuf_iterator<char>());
+}
+
+} // namespace
+
+TEST_CASE("DecodificarPng: ida y vuelta con CodificarPng (opaca y aplanada)") {
+    // 3x2 RGBA opaca con gradiente conocido.
+    const int w = 3, h = 2;
+    std::vector<unsigned char> rgba(w * h * 4);
+    for (int y = 0; y < h; ++y)
+        for (int x = 0; x < w; ++x) {
+            unsigned char* px = &rgba[(y * w + x) * 4];
+            px[0] = static_cast<unsigned char>(10 * x);
+            px[1] = static_cast<unsigned char>(20 * y + 5);
+            px[2] = 77;
+            px[3] = 255;
+        }
+    const std::string png = Exportador::CodificarPng(w, h, rgba.data());
+    REQUIRE_FALSE(png.empty());
+
+    const imgexp::PngDecodificado dec = imgexp::DecodificarPng(png);
+    REQUIRE(dec.ok);
+    CHECK(dec.ancho == w);
+    CHECK(dec.alto == h);
+    REQUIRE(dec.rgb.size() == static_cast<size_t>(w) * h * 3);
+    for (int y = 0; y < h; ++y)
+        for (int x = 0; x < w; ++x) {
+            const unsigned char* px = &rgba[(y * w + x) * 4];
+            CHECK(static_cast<unsigned char>(dec.rgb[(y * w + x) * 3 + 0]) ==
+                  px[0]);
+            CHECK(static_cast<unsigned char>(dec.rgb[(y * w + x) * 3 + 1]) ==
+                  px[1]);
+            CHECK(static_cast<unsigned char>(dec.rgb[(y * w + x) * 3 + 2]) ==
+                  px[2]);
+        }
+
+    // Alfa parcial se aplana sobre blanco: r=100, a=200 → 133.
+    std::vector<unsigned char> uno = {100, 150, 200, 200};
+    const std::string png2 = Exportador::CodificarPng(1, 1, uno.data());
+    const imgexp::PngDecodificado dec2 = imgexp::DecodificarPng(png2);
+    REQUIRE(dec2.ok);
+    // r: (100*200 + 255*55 + 127)/255 = 34152/255 = 133
+    // g: (150*200 + 255*55 + 127)/255 = 44152/255 = 173
+    // b: (200*200 + 255*55 + 127)/255 = 54152/255 = 212
+    CHECK(static_cast<unsigned char>(dec2.rgb[0]) == 133);
+    CHECK(static_cast<unsigned char>(dec2.rgb[1]) == 173);
+    CHECK(static_cast<unsigned char>(dec2.rgb[2]) == 212);
+}
+
+TEST_CASE("DecodificarPng: filtros Sub (1) y Up (2) se reconstruyen") {
+    // PNG 2x2 RGB construido a mano: fila 0 con filtro Sub, fila 1 con Up.
+    std::string ihdr;
+    Poner32BETest(&ihdr, 2); Poner32BETest(&ihdr, 2);
+    ihdr.push_back(static_cast<char>(8));  // profundidad
+    ihdr.push_back(static_cast<char>(2));  // RGB
+    ihdr.push_back(static_cast<char>(0));  // compresión
+    ihdr.push_back(static_cast<char>(0));  // filtro
+    ihdr.push_back(static_cast<char>(0));  // entrelazado
+
+    // Fila 0 (Sub): raw = [10,20,30 | 30,30,30] → (10,20,30)(40,50,60)
+    // Fila 1 (Up):  raw = [5,5,5 | 5,5,5]     → (15,25,35)(45,55,65)
+    std::string crudo;
+    crudo.push_back(static_cast<char>(1));
+    crudo += std::string({static_cast<char>(10), static_cast<char>(20),
+                          static_cast<char>(30), static_cast<char>(30),
+                          static_cast<char>(30), static_cast<char>(30)});
+    crudo.push_back(static_cast<char>(2));
+    crudo += std::string({5, 5, 5, 5, 5, 5});
+
+    std::string png;
+    png += "\x89PNG\r\n\x1a\n";
+    ChunkTest(&png, "IHDR", ihdr);
+    ChunkTest(&png, "IDAT", zipint::ZlibAlmacenado(
+               reinterpret_cast<const unsigned char*>(crudo.data()),
+               crudo.size()));
+    ChunkTest(&png, "IEND", "");
+
+    const imgexp::PngDecodificado dec = imgexp::DecodificarPng(png);
+    REQUIRE(dec.ok);
+    CHECK(dec.ancho == 2);
+    CHECK(dec.alto == 2);
+    const unsigned char esperado[12] = {10, 20, 30, 40, 50, 60,
+                                        15, 25, 35, 45, 55, 65};
+    for (int i = 0; i < 12; ++i)
+        CHECK(static_cast<unsigned char>(dec.rgb[i]) == esperado[i]);
+}
+
+TEST_CASE("DecodificarPng: paleta y firma rota fallan con mensaje") {
+    imgexp::PngDecodificado dec = imgexp::DecodificarPng("no es un png");
+    CHECK_FALSE(dec.ok);
+    CHECK(dec.msg.find("firma") != std::string::npos);
+
+    // IHDR con color=3 (paleta): no soportado, mensaje explícito.
+    std::string ihdr;
+    Poner32BETest(&ihdr, 1); Poner32BETest(&ihdr, 1);
+    ihdr.push_back(static_cast<char>(8));
+    ihdr.push_back(static_cast<char>(3));  // paleta
+    ihdr += std::string(3, '\0');
+    std::string png;
+    png += "\x89PNG\r\n\x1a\n";
+    ChunkTest(&png, "IHDR", ihdr);
+    ChunkTest(&png, "IEND", "");
+    dec = imgexp::DecodificarPng(png);
+    CHECK_FALSE(dec.ok);
+    CHECK(dec.msg.find("color") != std::string::npos);
+}
+
+TEST_CASE("DimensionesJpeg: SOF0 y SOF2 progresivo") {
+    std::string jpg;
+    jpg += std::string("\xFF\xD8", 2);                      // SOI
+    jpg += std::string("\xFF\xC0\x00\x11\x08", 5);         // SOF0, len 17, precisión 8
+    jpg += std::string("\x00\x03", 2);                      // alto = 3
+    jpg += std::string("\x00\x04", 2);                      // ancho = 4
+    jpg += std::string("\x03", 1);                          // 3 componentes
+    jpg += std::string("\x01\x22\x00\x02\x11\x01\x03\x11\x01", 9);
+    jpg += std::string("\xFF\xD9", 2);                      // EOI
+    int w = 0, h = 0;
+    REQUIRE(imgexp::DimensionesJpeg(jpg, &w, &h));
+    CHECK(w == 4);
+    CHECK(h == 3);
+
+    // SOF2 (progresivo) pasa por la misma ruta.
+    jpg[3] = static_cast<char>(0xC2);
+    REQUIRE(imgexp::DimensionesJpeg(jpg, &w, &h));
+    CHECK(w == 4);
+    CHECK(h == 3);
+
+    CHECK_FALSE(imgexp::DimensionesJpeg("no es un jpg", &w, &h));
+}
+
+TEST_CASE("ExportarPptx: imagen PNG se incrusta con media, rel y content type") {
+    const std::string dir = CarpetaTmp("pptx_img");
+    const std::string ruta_img = dir + "/portada.png";
+
+    // PNG 4x3 generado por nuestro propio codificador (bytes conocidos).
+    std::vector<unsigned char> rgba(4 * 3 * 4, 0);
+    for (size_t i = 0; i < rgba.size(); i += 4) {
+        rgba[i + 0] = 0x10; rgba[i + 1] = 0x20; rgba[i + 2] = 0x30;
+        rgba[i + 3] = 255;
+    }
+    const std::string png = Exportador::CodificarPng(4, 3, rgba.data());
+    REQUIRE_FALSE(png.empty());
+    {
+        std::ofstream f(ruta_img, std::ios::binary);
+        f.write(png.data(), static_cast<std::streamsize>(png.size()));
+        REQUIRE(static_cast<size_t>(f.tellp()) == png.size());
+    }
+
+    Programa p;
+    p.titulo = "Culto";
+    Escenario e;
+    e.id = "esc-1"; e.nombre = "Bloque 1";
+    Elemento img;
+    img.id = "el-1";
+    img.tipo = TipoElemento::Imagen;
+    img.titulo = "Portada";
+    img.ruta = ruta_img;
+    e.elementos.push_back(img);
+    p.escenarios.push_back(e);
+
+    const std::string ruta_salida = dir + "/salida.pptx";
+    ResultadoExport out;
+    REQUIRE(Exportador::ExportarPptx(p, ruta_salida, &out));
+    REQUIRE(out.ok);
+
+    const std::string paquete = LeerTodo(ruta_salida);
+    // Entrada de media con los bytes EXACTOS (entradas almacenadas).
+    CHECK(paquete.find("ppt/media/image1.png") != std::string::npos);
+    CHECK(paquete.find(png) != std::string::npos);
+    // Diapositiva con p:pic enlazado por rId2 y banda de título.
+    CHECK(paquete.find("<p:pic>") != std::string::npos);
+    CHECK(paquete.find("r:embed=\"rId2\"") != std::string::npos);
+    CHECK(paquete.find("Target=\"../media/image1.png\"") != std::string::npos);
+    CHECK(paquete.find("Extension=\"png\"") != std::string::npos);
+    CHECK(paquete.find("<a:t>Portada</a:t>") != std::string::npos);
+    bool aviso_img = false;
+    for (const auto& a : out.avisos)
+        if (a.find("imagen(es) incrustada") != std::string::npos)
+            aviso_img = true;
+    CHECK(aviso_img);
+
+    // Round-trip: el paquete sigue siendo legible por nuestro lector.
+    std::vector<DiapositivaPptx> diapos;
+    const InfoPptx info = LectorPptx::LeerArchivo(ruta_salida, &diapos);
+    REQUIRE(info.ok);
+    CHECK(info.total_diapositivas == 1);
+
+    std::filesystem::remove_all(dir);
+}
+
+TEST_CASE("ExportarPptx: fondo del escenario viaja al slide y #RGB se expande") {
+    Programa p;
+    p.titulo = "Culto";
+    Escenario e;
+    e.id = "esc-1"; e.nombre = "Bloque 1";
+    e.fondo = "#F01";
+    Elemento t;
+    t.id = "el-1";
+    t.tipo = TipoElemento::Texto;
+    t.lineas = {{"Hola", ""}};
+    e.elementos.push_back(t);
+    p.escenarios.push_back(e);
+
+    const std::string dir = CarpetaTmp("pptx_bg");
+    const std::string ruta_salida = dir + "/salida.pptx";
+    ResultadoExport out;
+    REQUIRE(Exportador::ExportarPptx(p, ruta_salida, &out));
+    const std::string paquete = LeerTodo(ruta_salida);
+    CHECK(paquete.find("<p:bg><p:bgPr><a:solidFill>") != std::string::npos);
+    CHECK(paquete.find("srgbClr val=\"FF0011\"") != std::string::npos);
+
+    // Fondo inválido no se cuela (queda el blanco del máster; el slide
+    // sin p:bg propio).
+    p.escenarios[0].fondo = "rojo";
+    REQUIRE(Exportador::ExportarPptx(p, ruta_salida, &out));
+    const std::string paquete2 = LeerTodo(ruta_salida);
+    CHECK(paquete2.find("srgbClr val=\"FF0011\"") == std::string::npos);
+
+    std::filesystem::remove_all(dir);
+}
+
+TEST_CASE("ExportarPdf: PNG con FlateDecode, JPEG con DCTDecode y fondo") {
+    const std::string dir = CarpetaTmp("pdf_img");
+
+    // PNG de 4x3 (nuestro codificador).
+    std::vector<unsigned char> rgba(4 * 3 * 4, 0);
+    for (size_t i = 0; i < rgba.size(); i += 4) {
+        rgba[i + 0] = 0xAA; rgba[i + 1] = 0xBB; rgba[i + 2] = 0xCC;
+        rgba[i + 3] = 255;
+    }
+    const std::string png = Exportador::CodificarPng(4, 3, rgba.data());
+    const std::string ruta_png = dir + "/portada.png";
+    {
+        std::ofstream f(ruta_png, std::ios::binary);
+        f.write(png.data(), static_cast<std::streamsize>(png.size()));
+    }
+    // JPEG mínimo con SOF0 de 4x3 (solo para el parser de dimensiones).
+    // Construido con tamaños explícitos: un literal C se trunca en \x00.
+    std::string jpg;
+    jpg += std::string("\xFF\xD8", 2);                      // SOI
+    jpg += std::string("\xFF\xC0\x00\x11\x08", 5);         // SOF0
+    jpg += std::string("\x00\x03", 2);                      // alto 3
+    jpg += std::string("\x00\x04", 2);                      // ancho 4
+    jpg += std::string("\x03", 1);                          // componentes
+    jpg += std::string("\x01\x22\x00\x02\x11\x01\x03\x11\x01", 9);
+    jpg += std::string("\xFF\xD9", 2);                      // EOI
+    const std::string ruta_jpg = dir + "/foto.jpg";
+    {
+        std::ofstream f(ruta_jpg, std::ios::binary);
+        f.write(jpg.data(), static_cast<std::streamsize>(jpg.size()));
+    }
+
+    Programa p;
+    p.titulo = "Culto";
+    Escenario e;
+    e.id = "esc-1"; e.nombre = "Bloque 1";
+    e.fondo = "#101828";
+    Elemento img;
+    img.id = "el-1"; img.tipo = TipoElemento::Imagen; img.ruta = ruta_png;
+    Elemento vid;
+    vid.id = "el-2"; vid.tipo = TipoElemento::Video; vid.ruta = "intro.mp4";
+    e.elementos = {img, vid};
+    p.escenarios.push_back(e);
+
+    const std::string ruta_salida = dir + "/salida.pdf";
+    ResultadoExport out;
+    REQUIRE(Exportador::ExportarPdf(p, ruta_salida, &out));
+    const std::string pdf = LeerTodo(ruta_salida);
+
+    // Página 1: PNG incrustado con FlateDecode + fondo del escenario.
+    CHECK(pdf.find("/Filter /FlateDecode") != std::string::npos);
+    CHECK(pdf.find("/Subtype /Image") != std::string::npos);
+    CHECK(pdf.find("/Width 4") != std::string::npos);
+    CHECK(pdf.find("/Height 3") != std::string::npos);
+    CHECK(pdf.find("/Im1 Do") != std::string::npos);
+    CHECK(pdf.find("rg 0 0 960 540 re f") != std::string::npos);
+    // La imagen 4x3 px escala contain: min(960/4, 540/3)=180 → 720x540 pt
+    // centrada: x=(960-720)/2=120, y=(540-540)/2=0.
+    CHECK(pdf.find("q 180.00 0 0 180.00 120.00 0.00 cm /Im1 Do Q") !=
+          std::string::npos);
+
+    // Página 2: el vídeo NO se incrusta (referencia explícita).
+    CHECK(pdf.find("intro.mp4") != std::string::npos);
+    CHECK(pdf.find("no incrustado") != std::string::npos);
+
+    // Variante JPEG: paso directo DCTDecode.
+    p.escenarios[0].elementos[0].ruta = ruta_jpg;
+    ResultadoExport out2;
+    REQUIRE(Exportador::ExportarPdf(p, ruta_salida, &out2));
+    const std::string pdf2 = LeerTodo(ruta_salida);
+    CHECK(pdf2.find("/Filter /DCTDecode") != std::string::npos);
+    CHECK(pdf2.find("/Width 4") != std::string::npos);
+
+    std::filesystem::remove_all(dir);
 }
