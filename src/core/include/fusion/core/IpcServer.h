@@ -16,10 +16,15 @@ struct MensajeIpc {
     std::string raw_json;
 };
 
-// Respuesta IPC saliente: JSON serializado.
+// Respuesta IPC saliente: JSON serializado. El servidor añade el salto
+// de línea final (una línea por mensaje; los clientes leen con ReadLine).
+// `suscribir` es una señal de transporte: el despachador la activa cuando
+// el comando es estado.suscribir y el servidor marca la conexión como
+// suscrita a eventos (EmitirEvento solo escribe en conexiones suscritas).
 struct RespuestaIpc {
     std::string raw_json;
     bool       ok = true;
+    bool       suscribir = false;
 };
 
 // Handler: recibe el mensaje, devuelve la respuesta.
