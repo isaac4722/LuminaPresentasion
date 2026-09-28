@@ -206,7 +206,7 @@ jobs:
         shell: pwsh
         run: |
           $qtbin = if ("${{ matrix.arquitectura }}" -eq "x86") { "C:\Qt\5.15.2\msvc2019\bin" } else { "C:\Qt\5.15.2\msvc2019_64\bin" }
-          & "$qtbin\windeployqt.exe" --release --no-translations "src\qt-shell\build-${{ matrix.arquitectura }}\FusionQtShell.exe"
+          & "$qtbin\windeployqt.exe" --release --no-translations --no-compiler-runtime --no-opengl-sw "src\qt-shell\build-${{ matrix.arquitectura }}\FusionQtShell.exe"
           if ($LASTEXITCODE -ne 0) { Write-Host "##[error]windeployqt falló"; exit 1 }
           Get-ChildItem "src\qt-shell\build-${{ matrix.arquitectura }}" | Select-Object -ExpandProperty Name
 

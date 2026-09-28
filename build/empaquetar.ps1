@@ -92,14 +92,32 @@ Write-Host "   gestionado: $($gest.FullName)"
 # ---------------------------------------------------------------------------
 # 4) Shell Qt + DLL de Qt (windeployqt ya corrió en el job qt_shell)
 # ---------------------------------------------------------------------------
+# Buscar-Exe devuelve la ruta (string): no re-aplicar .FullName.
 $qt = Buscar-Exe 'FusionQtShell.exe' ("qt-shell-" + $Arch)
-$dirQt = Split-Path -Parent $qt.FullName
+$dirQt = Split-Path -Parent $qt
 New-Item -ItemType Directory -Force -Path (Join-Path $Destino 'qt') | Out-Null
 Copy-Item (Join-Path $dirQt '*') (Join-Path $Destino 'qt') -Recurse -Force
 $qtDll = Get-ChildItem (Join-Path $Destino 'qt') -Filter 'Qt5Core.dll' -Recurse -ErrorAction SilentlyContinue
 if (-not $qtDll) {
     Write-Host "##[warning]empaquetar: Qt5Core.dll no está junto al shell Qt (¿faltó windeployqt?)"
 }
+# Limpiar restos de compilación que el artefacto de qt_shell arrastra
+# (el artefacto es el build dir completo, útil para depurar; el
+# paquete solo lleva lo que se ejecuta).
+$destinoQt = Join-Path $Destino 'qt'
+foreach ($b in @('CMakeFiles', 'CMakeCache.txt', 'build.ninja',
+                 'cmake_install.cmake', 'CMakeDoxyfile.in',
+                 'FusionQtShell_autogen', 'CMakeLists.txt.user')) {
+    $p = Join-Path $destinoQt $b
+    if (Test-Path $p) { Remove-Item -Recurse -Force $p }
+}
+Get-ChildItem $destinoQt -Recurse -File -ErrorAction SilentlyContinue |
+    Where-Object { $_.Name -like 'vc_redist*.exe' -or
+                   $_.Name -like '*.obj' -or
+                   $_.Name -like '*.ninja' -or
+                   $_.Name -like '.ninja*' -or
+                   $_.Name -like '*.d' } |
+    Remove-Item -Force -ErrorAction SilentlyContinue
 Write-Host "   qt:       $qt"
 
 # ---------------------------------------------------------------------------
