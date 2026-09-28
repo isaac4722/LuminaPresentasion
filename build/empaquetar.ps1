@@ -26,14 +26,14 @@ param(
     [string]$Destino,
 
     # Raíz del repo (para data\, licencias y LEEME). Por defecto, la
-    # carpeta dos niveles arriba de este script.
+    # carpeta superior a build\ (este script vive en build\).
     [string]$Raiz = ""
 )
 
 $ErrorActionPreference = 'Stop'
 
 if ($Raiz -eq "") {
-    $Raiz = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
+    $Raiz = Split-Path -Parent $PSScriptRoot
 }
 
 function Buscar-Exe {
