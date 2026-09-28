@@ -499,3 +499,16 @@ Sesión IX — letterbox, auto-ajuste y fondo imagen del render directo:
   (blip r:embed + ppt/media + EMU), estilos por-run, consumir el
   rasterizador desde el shell (Engine en vivo), etiquetar v* para
   publicar release con portable e instaladores.
+
+Adenda de la sesión IX — publicación:
+
+- fix(ci) 7da1e3b: el job "Publicar release" fallaba con 403 (el
+  GITHUB_TOKEN por defecto no puede crear releases); se añadió
+  permissions: contents: write SOLO a ese job.
+- El tag v0.9.0 quedó sin publicar (señalado por el run fallido
+  36431458157); re-etiquetado como v0.9.1 sobre el fix: run
+  36432102175 en VERDE (10/10 builds) y release publicada con los 4
+  activos: FUSION-HP-portable-x86.zip (13,7 MB), FUSION-HP-portable-
+  x64.zip (15,8 MB), FusionHP-Setup-x86.exe (11,6 MB) y
+  FusionHP-Setup-x64.exe (13,1 MB).
+- https://github.com/isaac4722/LuminaPresentasion/releases/tag/v0.9.1
