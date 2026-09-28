@@ -300,55 +300,6 @@ void Rellenar(ID2D1RenderTarget* rt, const Color& c) {
     rt->FillRectangle(D2D1::RectF(0, 0, s.width, s.height), brush.Get());
 }
 
-// Carga una imagen desde disco con WIC y la dibuja dentro del rectángulo
-// destino con el ajuste pedido. Devuelve false si no se pudo (el caller
-// pinta color1 y avisa).
-bool DibujarImagenEnRT(ID2D1RenderTarget* rt, IWICImagingFactory* wic,
-                       const std::wstring& ruta, AjusteImagen ajuste,
-                       float dx, float dy, float dw, float dh) {
-    if (!wic || dw <= 0 || dh <= 0) return false;
-    ComPtr<IWICBitmapDecoder> decod;
-    HRESULT hr = wic->CreateDecoderFromFilename(
-        ruta.c_str(), nullptr, GENERIC_READ, WICDecodeMetadataCacheOnDemand,
-        decod.GetAddressOf());
-    if (FAILED(hr)) return false;
-    ComPtr<IWICBitmapFrameDecode> marco;
-    hr = decod->GetFrame(0, marco.GetAddressOf());
-    if (FAILED(hr)) return false;
-    ComPtr<ID2D1Bitmap> bitmap;
-    hr = rt->CreateBitmapFromWicBitmap(marco.Get(), bitmap.GetAddressOf());
-    if (FAILED(hr)) return false;
-
-    const D2D1_SIZE_F i = bitmap->GetSize();
-    if (i.width <= 0 || i.height <= 0) return false;
-    float escala;
-    switch (ajuste) {
-        case AjusteImagen::Contener:
-            escala = std::min(dw / i.width, dh / i.height);
-            break;
-        case AjusteImagen::Estirar:
-            rt->DrawBitmap(bitmap.Get(), D2D1::RectF(dx, dy, dx + dw, dy + dh));
-            return true;
-        case AjusteImagen::Cubrir:
-        default:
-            escala = std::max(dw / i.width, dh / i.height);
-            break;
-    }
-    const float ancho = i.width * escala;
-    const float alto  = i.height * escala;
-    const float ox = dx + (dw - ancho) / 2.0f;
-    const float oy = dy + (dh - alto) / 2.0f;
-    // "Cubrir" se sale del rectángulo: recortar a lo visible.
-    if (ajuste == AjusteImagen::Cubrir) {
-        rt->PushAxisAlignedClip(
-            D2D1::RectF(dx, dy, dx + dw, dy + dh),
-            D2D1_ANTIALIAS_MODE_ALIASED);
-    }
-    rt->DrawBitmap(bitmap.Get(), D2D1::RectF(ox, oy, ox + ancho, oy + alto));
-    if (ajuste == AjusteImagen::Cubrir) rt->PopAxisAlignedClip();
-    return true;
-}
-
 } // namespace
 
 void PintarFondoEnRT(ID2D1RenderTarget* rt, IDWriteFactory* dw,
@@ -417,6 +368,55 @@ void DibujarPasoEnRT(ID2D1RenderTarget* rt, IDWriteFactory* dw,
                   formato, recto, brush.Get(),
                   D2D1_DRAW_TEXT_OPTIONS_CLIP,
                   DWRITE_MEASURING_MODE_NATURAL);
+}
+
+// Carga una imagen desde disco con WIC y la dibuja dentro del rectángulo
+// destino con el ajuste pedido. Devuelve false si no se pudo (el caller
+// pinta color1 y avisa).
+bool DibujarImagenEnRT(ID2D1RenderTarget* rt, IWICImagingFactory* wic,
+                       const std::wstring& ruta, AjusteImagen ajuste,
+                       float dx, float dy, float dw, float dh) {
+    if (!wic || dw <= 0 || dh <= 0) return false;
+    ComPtr<IWICBitmapDecoder> decod;
+    HRESULT hr = wic->CreateDecoderFromFilename(
+        ruta.c_str(), nullptr, GENERIC_READ, WICDecodeMetadataCacheOnDemand,
+        decod.GetAddressOf());
+    if (FAILED(hr)) return false;
+    ComPtr<IWICBitmapFrameDecode> marco;
+    hr = decod->GetFrame(0, marco.GetAddressOf());
+    if (FAILED(hr)) return false;
+    ComPtr<ID2D1Bitmap> bitmap;
+    hr = rt->CreateBitmapFromWicBitmap(marco.Get(), bitmap.GetAddressOf());
+    if (FAILED(hr)) return false;
+
+    const D2D1_SIZE_F i = bitmap->GetSize();
+    if (i.width <= 0 || i.height <= 0) return false;
+    float escala;
+    switch (ajuste) {
+        case AjusteImagen::Contener:
+            escala = std::min(dw / i.width, dh / i.height);
+            break;
+        case AjusteImagen::Estirar:
+            rt->DrawBitmap(bitmap.Get(), D2D1::RectF(dx, dy, dx + dw, dy + dh));
+            return true;
+        case AjusteImagen::Cubrir:
+        default:
+            escala = std::max(dw / i.width, dh / i.height);
+            break;
+    }
+    const float ancho = i.width * escala;
+    const float alto  = i.height * escala;
+    const float ox = dx + (dw - ancho) / 2.0f;
+    const float oy = dy + (dh - alto) / 2.0f;
+    // "Cubrir" se sale del rectángulo: recortar a lo visible.
+    if (ajuste == AjusteImagen::Cubrir) {
+        rt->PushAxisAlignedClip(
+            D2D1::RectF(dx, dy, dx + dw, dy + dh),
+            D2D1_ANTIALIAS_MODE_ALIASED);
+    }
+    rt->DrawBitmap(bitmap.Get(), D2D1::RectF(ox, oy, ox + ancho, oy + alto));
+    if (ajuste == AjusteImagen::Cubrir) rt->PopAxisAlignedClip();
+    return true;
 }
 
 } // namespace fusion::rendirecto
@@ -561,11 +561,11 @@ bool RasterizadorDirectoD2D::Rasterizar(const PlanRenderDirecto& plan,
             b8 = p[0]; g8 = p[1]; r8 = p[2];
         } else {
             r8 = static_cast<unsigned char>(std::min(
-                255, (p[2] * 255 + a / 2) / a));
+                255, static_cast<int>((p[2] * 255u + a / 2) / a)));
             g8 = static_cast<unsigned char>(std::min(
-                255, (p[1] * 255 + a / 2) / a));
+                255, static_cast<int>((p[1] * 255u + a / 2) / a)));
             b8 = static_cast<unsigned char>(std::min(
-                255, (p[0] * 255 + a / 2) / a));
+                255, static_cast<int>((p[0] * 255u + a / 2) / a)));
         }
         (*rgba)[i * 4 + 0] = r8;
         (*rgba)[i * 4 + 1] = g8;
