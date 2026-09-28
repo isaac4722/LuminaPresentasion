@@ -21,10 +21,10 @@
 
 #if ARCH == "x64"
   #define ArchSuffix "x64"
-  #define Platform "x64"
+  #define PlatformAllowed "x64compatible"
 #else
   #define ArchSuffix "x86"
-  #define Platform "x86"
+  #define PlatformAllowed "x86compatible"
 #endif
 
 [Setup]
@@ -32,7 +32,9 @@ AppName=FUSION-HP
 AppVersion=1.0.0
 AppPublisher=FUSION-HP
 AppPublisherURL=https://github.com/isaac4722/LuminaPresentasion
-DefaultDirName={pf}\FUSION-HP
+; {autopf} = Program Files (o Program Files (x86) en modo 32 bits;
+; Inno 6.3+ decide el modo con ArchitecturesAllowed, sin directiva extra).
+DefaultDirName={autopf}\FUSION-HP
 DefaultGroupName=FUSION-HP
 AllowNoIcons=yes
 LicenseFile=..\LICENSE
@@ -40,8 +42,10 @@ OutputDir=Output
 OutputBaseFilename=FusionHP-Setup-{#ArchSuffix}
 Compression=lzma2/ultra64
 SolidCompression=yes
-ArchitecturesInstallIn64BitOS={#Platform}
-ArchitecturesAllowed={#Platform}
+; Sintaxis Inno Setup 6.3+ (6.4 eliminó ArchitecturesInstallIn64BitOS):
+; x64compatible = proceso de 64 bits, no arranca en Windows de 32 bits;
+; x86compatible = proceso de 32 bits ( WoW en x64).
+ArchitecturesAllowed={#PlatformAllowed}
 DisableProgramGroupPage=yes
 DisableDirPage=no
 PrivilegesRequired=admin
