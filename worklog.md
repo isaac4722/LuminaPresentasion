@@ -406,3 +406,22 @@ Stage Summary:
 - Pendiente siguiente sesión: rasterizador del modo directo
   (DiapositivaPptx + tema → D2D) y capa "Escenario" de la herencia
   (doc 5.4).
+
+Adenda sesión VII — puesta en verde del empaquetado (CI):
+- Tres fallos del pipeline nuevo, reproducidos y corregidos uno a uno
+  (commits 2458100, e394e80, 1ce60a1, 86f1797):
+  1) Buscar-Exe devuelve la ruta como string; $qt.FullName sobre un
+     string daba null (Split-Path -Parent null). Hallado reproduciendo
+     el paso con pwsh 7.4 local y los artefactos reales del run.
+  2) La raíz del repo es UN nivel sobre build\, no dos: el paquete
+     salía sin data\ (biblias/esquemas) y la verificación final lo
+     detectaba.
+  3) Inno Setup 6.7.1 del runner eliminó ArchitecturesInstallIn64BitOS
+     (6.4): sintaxis moderna ArchitecturesAllowed=x64compatible/
+     x86compatible + {autopf}; y la ruta del paquete debe ser absoluta
+     (ISCC resuelve relativas desde el directorio del .iss).
+- RUN 36366953362 (punta 86f1797): 10/10 jobs VERDE — núcleo x86+x64,
+  qt_shell x86+x64, gestionada, launcher, gate, portable x86+x64 e
+  instaladores dual. Entregables en el run: portable-x86 (13,1 MB),
+  portable-x64 (15,1 MB) e instaladores (22,5 MB, dos Setup).
+- El release con los 4 entregables se publica al etiquetar v*.
