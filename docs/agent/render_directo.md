@@ -72,13 +72,29 @@ Layout con bandas normalizadas (0..1), independientes de resolución:
   directo y el seam `RasterizadorUnidad` de `Exportador::ExportarImagenes`
   (1920x1080).
 
-## 4. Fuera de alcance v1 (piezas siguientes)
+## 3. Letterbox automático (v1.1)
+
+`DibujarPlan` y `RasterizadorDirectoD2D::Rasterizar` encajan el plan en
+el objetivo según `plan.aspecto` (shared `Encajar` + `Renormalizar`, una
+sola fuente de verdad portable):
+
+- El **fondo del tema cubre el objetivo completo**: las bandas quedan
+  con el tema (nunca escritorio ni bandas negras espurias; regla 6.1).
+- Los pasos se remapean al rect de contenido: máximo tamaño que
+  conserva la proporción de la diapositiva, centrado.
+- Objetivo con la misma relación que la diapositiva → identidad
+  (el despacho y el rasterizado coinciden con el v1).
+- Aspecto inválido (<= 0) en un plan hecho a mano → objetivo completo
+  (degradación tolerante, igual que v1).
+
+## 4. Fuera de alcance v1.1 (piezas siguientes)
 
 - Imágenes/formas internas de las diapositivas pptx (posición EMU,
   media del paquete `ppt/media/`).
 - Estilos por-run del pptx (negrita/tamaño/color por run).
-- Letterbox automático cuando el monitor no coincide con `aspecto`.
 - Fondo tipo imagen en el modo directo (hoy: aviso + color1).
+- Auto-ajuste del tamaño de texto cuando un párrafo no cabe en su slot
+  (hoy: DirectWrite recorta dentro del rect con clip).
 
 ## 5. Pruebas
 
@@ -86,7 +102,10 @@ Layout con bandas normalizadas (0..1), independientes de resolución:
   Utf8AUtf16 (ASCII/acentos/CJK/emoji/suplentes/roto/truncado/suelto/
   sobrecodificado), bandas y slots del plan, truncado de párrafos con
   aviso, tema vacío/inválido/imagen, clamp de aspecto, despacho
-  `DibujarPlan` con mock de grabación (orden y escalado), no-ops
+  `DibujarPlan` con mock de grabación (orden y escalado), letterbox
+  (4:3 en 16:9 centrado, 16:9 en 4:3 con bandas arriba/abajo, aspecto
+  inválido degrada a objetivo completo, e2e ConstruirPlan→DibujarPlan
+  con todos los pasos dentro del rect), no-ops
   seguros.
 - La parte D2D (`RasterizadorDirectoD2D`, rutinas `*EnRT`) solo compila
   en MSVC (CI: núcleo x86/x64 + qt_shell).

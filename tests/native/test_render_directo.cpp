@@ -335,3 +335,101 @@ TEST_CASE("DibujarPlan: despacha fondo y textos escalados al objetivo") {
     CHECK(mock2.fondos.size() == 1);  // el fondo siempre se dibuja
     CHECK(mock2.textos.empty());
 }
+
+// ---------------------------------------------------------------------------
+// Letterbox (encaje del plan en el objetivo)
+// ---------------------------------------------------------------------------
+
+TEST_CASE("DibujarPlan: letterbox 4:3 en objetivo 16:9 centra el contenido") {
+    PlanRenderDirecto plan;
+    plan.aspecto = 4.0f / 3.0f;
+    plan.fondo.tipo = Fondo::Tipo::Solido;
+    plan.fondo.color1 = {10, 20, 30};
+
+    // Un paso que cubre TODA la diapositiva (0,0,1,1).
+    PasoDibujo cuerpo;
+    cuerpo.tipo = PasoDibujo::Tipo::Cuerpo;
+    cuerpo.x = 0.0f; cuerpo.y = 0.0f; cuerpo.w = 1.0f; cuerpo.h = 1.0f;
+    cuerpo.texto = L"Diapositiva entera";
+    plan.pasos.push_back(cuerpo);
+
+    RendererGrabador mock;
+    DibujarPlan(&mock, plan, 1920.0f, 1080.0f);
+
+    // El fondo cubre el objetivo completo (las bandas quedan con el tema).
+    REQUIRE(mock.fondos.size() == 1);
+
+    // El paso queda dentro del rect de contenido: 1440x1080 centrado.
+    REQUIRE(mock.textos.size() == 1);
+    CHECK(mock.textos[0].x == doctest::Approx(240.0f).epsilon(0.01));
+    CHECK(mock.textos[0].y == doctest::Approx(0.0f).epsilon(0.01));
+    CHECK(mock.textos[0].w == doctest::Approx(1440.0f).epsilon(0.01));
+    CHECK(mock.textos[0].h == doctest::Approx(1080.0f).epsilon(0.01));
+}
+
+TEST_CASE("DibujarPlan: letterbox 16:9 en objetivo 4:3 deja bandas arriba y "
+          "abajo") {
+    PlanRenderDirecto plan;
+    plan.aspecto = 16.0f / 9.0f;
+
+    PasoDibujo cuerpo;
+    cuerpo.tipo = PasoDibujo::Tipo::Cuerpo;
+    cuerpo.x = 0.0f; cuerpo.y = 0.0f; cuerpo.w = 1.0f; cuerpo.h = 1.0f;
+    cuerpo.texto = L"Completa";
+    plan.pasos.push_back(cuerpo);
+
+    RendererGrabador mock;
+    DibujarPlan(&mock, plan, 1024.0f, 768.0f);
+
+    // Contenido: 1024x576 centrado verticalmente (bandas de 96 arriba y
+    // abajo).
+    REQUIRE(mock.textos.size() == 1);
+    CHECK(mock.textos[0].x == doctest::Approx(0.0f).epsilon(0.01));
+    CHECK(mock.textos[0].y == doctest::Approx(96.0f).epsilon(0.01));
+    CHECK(mock.textos[0].w == doctest::Approx(1024.0f).epsilon(0.01));
+    CHECK(mock.textos[0].h == doctest::Approx(576.0f).epsilon(0.01));
+}
+
+TEST_CASE("DibujarPlan: aspecto invalido degrada a objetivo completo") {
+    PlanRenderDirecto plan;
+    plan.aspecto = 0.0f;  // paquete sin sldSz mal construido a mano
+
+    PasoDibujo cuerpo;
+    cuerpo.tipo = PasoDibujo::Tipo::Cuerpo;
+    cuerpo.x = 0.1f; cuerpo.y = 0.1f; cuerpo.w = 0.8f; cuerpo.h = 0.8f;
+    cuerpo.texto = L"X";
+    plan.pasos.push_back(cuerpo);
+
+    RendererGrabador mock;
+    DibujarPlan(&mock, plan, 800.0f, 600.0f);
+
+    REQUIRE(mock.textos.size() == 1);
+    CHECK(mock.textos[0].x == doctest::Approx(0.1f * 800.0f).epsilon(0.01));
+    CHECK(mock.textos[0].y == doctest::Approx(0.1f * 600.0f).epsilon(0.01));
+    CHECK(mock.textos[0].w == doctest::Approx(0.8f * 800.0f).epsilon(0.01));
+    CHECK(mock.textos[0].h == doctest::Approx(0.8f * 600.0f).epsilon(0.01));
+}
+
+TEST_CASE("DibujarPlan: ConstruirPlan con 4:3 y despacho letterbox e2e") {
+    const ResolucionTema tema = HerenciaTemas::Resolver(
+        nullptr, nullptr, nullptr, nullptr, nullptr);
+
+    PlanRenderDirecto plan;
+    REQUIRE(RenderDirecto::ConstruirPlan(DiapoEjemplo(), tema, 4.0f / 3.0f,
+                                         &plan)
+                .ok);
+    CHECK(plan.aspecto == doctest::Approx(4.0f / 3.0f));
+
+    RendererGrabador mock;
+    DibujarPlan(&mock, plan, 1920.0f, 1080.0f);
+
+    REQUIRE(mock.fondos.size() == 1);
+    // Título + 3 párrafos, todos dentro del rect 1440x1080 en x=240.
+    REQUIRE(mock.textos.size() == 4);
+    for (const auto& t : mock.textos) {
+        CHECK(t.x >= 240.0f - 0.01f);
+        CHECK(t.x + t.w <= 240.0f + 1440.0f + 0.01f);
+        CHECK(t.y >= -0.01f);
+        CHECK(t.y + t.h <= 1080.0f + 0.01f);
+    }
+}

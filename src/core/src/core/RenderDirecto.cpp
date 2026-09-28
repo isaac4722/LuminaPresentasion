@@ -102,6 +102,55 @@ std::wstring Utf8AUtf16(const std::string& utf8) {
 }
 
 // ---------------------------------------------------------------------------
+// Portable: encaje con bandas (letterbox)
+// ---------------------------------------------------------------------------
+
+// Rectángulo de contenido de una diapositiva de relación `aspecto`
+// (ancho/alto) dentro de un objetivo ancho x alto: ocupa el máximo
+// posible conservando su proporción, centrado (bandas iguales a los
+// lados o arriba/abajo). El fondo del tema cubre SIEMPRE el objetivo
+// completo (regla 6.1: la salida nunca muestra el escritorio); los
+// pasos de texto se remapean dentro de este rectángulo.
+struct RectContenido {
+    float x = 0, y = 0, w = 0, h = 0;
+};
+
+RectContenido Encajar(float aspecto, float ancho, float alto) {
+    RectContenido c;
+    if (!(aspecto > 0.0f) || !(ancho > 0.0f) || !(alto > 0.0f)) {
+        // Sin datos coherentes: objetivo completo (comportamiento v1).
+        c.w = ancho;
+        c.h = alto;
+        return c;
+    }
+    const float objetivo = ancho / alto;
+    if (aspecto >= objetivo) {
+        c.w = ancho;
+        c.h = ancho / aspecto;
+    } else {
+        c.h = alto;
+        c.w = alto * aspecto;
+    }
+    c.x = (ancho - c.w) * 0.5f;
+    c.y = (alto - c.h) * 0.5f;
+    return c;
+}
+
+// Renormaliza un paso (coordenadas 0..1 sobre la diapositiva) a
+// coordenadas 0..1 del OBJETIVO completo, dejándolo dentro del rect de
+// contenido. Con objetivo de la misma relación que la diapositiva, el
+// rect cubre todo y el paso queda idéntico (identidad).
+PasoDibujo Renormalizar(const PasoDibujo& p, const RectContenido& c,
+                        float ancho, float alto) {
+    PasoDibujo q = p;
+    q.x = (c.x + p.x * c.w) / ancho;
+    q.y = (c.y + p.y * c.h) / alto;
+    q.w = (p.w * c.w) / ancho;
+    q.h = (p.h * c.h) / alto;
+    return q;
+}
+
+// ---------------------------------------------------------------------------
 // Portable: construcción del plan
 // ---------------------------------------------------------------------------
 
@@ -202,11 +251,15 @@ ResultadoRenderDirecto RenderDirecto::ConstruirPlan(
 void DibujarPlan(Renderer* r, const PlanRenderDirecto& plan,
                  float ancho, float alto) {
     if (!r || ancho <= 0.0f || alto <= 0.0f) return;
+    // El fondo cubre el objetivo completo: las bandas del letterbox
+    // quedan con el tema (nunca escritorio ni vacíos negros espurios).
     r->DibujarFondo(plan.fondo);
+    const RectContenido contenido = Encajar(plan.aspecto, ancho, alto);
     for (const PasoDibujo& paso : plan.pasos) {
-        r->DibujarTexto(paso.texto, paso.estilo,
-                        paso.x * ancho, paso.y * alto,
-                        paso.w * ancho, paso.h * alto);
+        const PasoDibujo q = Renormalizar(paso, contenido, ancho, alto);
+        r->DibujarTexto(q.texto, q.estilo,
+                        q.x * ancho, q.y * alto,
+                        q.w * ancho, q.h * alto);
     }
 }
 
@@ -514,8 +567,13 @@ bool RasterizadorDirectoD2D::Rasterizar(const PlanRenderDirecto& plan,
                                 plan.fondo, &impl_->formatos,
                                 static_cast<float>(ancho),
                                 static_cast<float>(alto), nullptr);
+    const RectContenido contenido = Encajar(
+        plan.aspecto, static_cast<float>(ancho), static_cast<float>(alto));
     for (const PasoDibujo& paso : plan.pasos) {
-        rendirecto::DibujarPasoEnRT(rt.Get(), impl_->dw.Get(), paso,
+        const PasoDibujo q = Renormalizar(paso, contenido,
+                                          static_cast<float>(ancho),
+                                          static_cast<float>(alto));
+        rendirecto::DibujarPasoEnRT(rt.Get(), impl_->dw.Get(), q,
                                     &impl_->formatos,
                                     static_cast<float>(ancho),
                                     static_cast<float>(alto));

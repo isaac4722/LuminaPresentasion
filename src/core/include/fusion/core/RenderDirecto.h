@@ -48,9 +48,11 @@ struct PasoDibujo {
 
 struct PlanRenderDirecto {
     // Relación de aspecto de la diapositiva origen (ancho/alto, de
-    // p:sldSz). Informativa: la consumen el shell y el rasterizador para
-    // decidir letterbox si el objetivo no coincide. 16:9 si el paquete
-    // no la declara.
+    // p:sldSz). La consumen DibujarPlan y RasterizadorDirectoD2D para
+    // ENCAJAR la diapositiva en el objetivo con bandas (letterbox
+    // centrado): el fondo cubre el objetivo completo y los pasos quedan
+    // dentro del rect de contenido. Con objetivo de la misma relación,
+    // es identidad. 16:9 si el paquete no la declara.
     float aspecto = 16.0f / 9.0f;
 
     // Fondo resuelto del tema activo. Nunca es "escritorio": si el tema
