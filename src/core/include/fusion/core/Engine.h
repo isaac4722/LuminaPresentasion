@@ -5,7 +5,10 @@
 
 #include "fusion/Version.h"
 #include "fusion/core/Session.h"
+#include "fusion/data/BibleDatabase.h"
+#include "fusion/data/SongDatabase.h"
 
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <functional>
@@ -93,14 +96,24 @@ public:
     bool ObtenerVersiculo(const std::string& biblia,
                           const std::string& cita,
                           std::string* texto_out) const;
+    // Búsqueda libre (FTS5) sobre la biblia activa.
+    std::vector<Versiculo> BuscarEnBiblia(const std::string& texto,
+                                          int limite) const;
+    std::vector<std::string> FavoritosBiblia() const;
 
     // Cantos -----------------------------------------------------------
     // (la BD los sirve directamente; no se generan PPTX ni archivos intermedios)
     std::vector<std::string> ListarCantos() const;
+    std::vector<Canto> BuscarCantos(const std::string& texto, int limite) const;
+    bool ObtenerCanto(std::int64_t id, CantoDetalle* out) const;
 
     // Sesión -----------------------------------------------------------
     bool CargarSesion();      // Lee runtime/session.json
     bool GuardarSesion();     // Escribe runtime/session.json
+
+    // Diagnóstico --------------------------------------------------------
+    // ¿Hay biblia activa con contenido? (para diag.autotest y avisos)
+    bool BibliaLista() const;
 
 private:
     struct Impl;

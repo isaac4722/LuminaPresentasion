@@ -69,6 +69,13 @@ target_include_directories(fusion_third_party PUBLIC
 )
 # Forzar detección de lenguaje C para el target (sqlite3.c es C, no C++)
 set_target_properties(fusion_third_party PROPERTIES LINKER_LANGUAGE C)
+# stb_image.h no es /W4-limpio: su TU de implementación se silencia
+# (las declaraciones incluidas por PptxDirecto.cpp sí son limpias).
+if(MSVC)
+    set_source_files_properties(
+        ${FUSION_SRC_DIR}/core/StbImagen.cpp
+        PROPERTIES COMPILE_OPTIONS "/W0")
+endif()
 if(MSVC)
     target_compile_options(fusion_third_party PRIVATE /W0)
     # compile_definitions (NO compile_options con /D): con Ninja+MSVC,
@@ -108,6 +115,8 @@ add_executable(FusionCore WIN32
     ${FUSION_SRC_DIR}/core/ExportadorPptx.cpp
     ${FUSION_SRC_DIR}/core/ExportadorPdf.cpp
     ${FUSION_SRC_DIR}/core/ExportadorPng.cpp
+    ${FUSION_SRC_DIR}/core/IpcDespacho.cpp
+    ${FUSION_SRC_DIR}/core/AdaptadorEngine.cpp
 
     ${FUSION_SRC_DIR}/data/SongDatabase.cpp
     ${FUSION_SRC_DIR}/data/BibleDatabase.cpp

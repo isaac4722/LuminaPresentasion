@@ -1,4 +1,8 @@
-// src/core/src/core/Engine.cpp — Implementación del motor (stub fundacional)
+// src/core/src/core/Engine.cpp — Implementación del motor
+//
+// El motor es el dueño único del estado de proyección: carga sesión y BDs,
+// guarda el programa cargado (navegación real siguiente/anterior y
+// GuardarPrograma), y expone monitores. La carcasa solo lo opera por IPC.
 
 #include "fusion/core/Engine.h"
 #include "fusion/core/Session.h"
@@ -8,6 +12,7 @@
 #include "fusion/data/SongDatabase.h"
 #include "fusion/data/BibleDatabase.h"
 #include "fusion/data/AhpFormat.h"
+#include "Navegacion.h"
 
 #include <atomic>
 #include <memory>
@@ -26,8 +31,12 @@ struct Engine::Impl {
     std::unique_ptr<BibleDatabase> biblia_activa;
     std::atomic<bool> corriendo{false};
 
+    // Programa cargado (navegación real y GuardarPrograma).
+    Programa programa_actual;
+    bool     hay_programa = false;
+
     void Emitir(EventoMotor e) {
-        std::lock_guard<std::mutex> lk(m);
+        // Ya llega con el mutex del estado tomado (o en fase de salida).
         for (auto& cb : suscriptores) if (cb) cb(e, estado);
     }
 };
@@ -102,8 +111,10 @@ bool Engine::AbrirPrograma(const std::string& ruta) {
     std::string err;
     if (!AhpFormat::Cargar(ruta, &p, &err)) return false;
     std::lock_guard<std::mutex> lk(impl_->m);
+    impl_->programa_actual = std::move(p);
+    impl_->hay_programa    = true;
     impl_->estado.programa_ruta   = ruta;
-    impl_->estado.programa_titulo = p.titulo;
+    impl_->estado.programa_titulo = impl_->programa_actual.titulo;
     impl_->estado.escenario_id.clear();
     impl_->estado.elemento_id.clear();
     impl_->estado.linea_actual = 0;
@@ -113,6 +124,9 @@ bool Engine::AbrirPrograma(const std::string& ruta) {
 
 bool Engine::NuevoPrograma(const std::string& titulo) {
     std::lock_guard<std::mutex> lk(impl_->m);
+    impl_->programa_actual = Programa{};
+    impl_->programa_actual.titulo = titulo;
+    impl_->hay_programa = true;
     impl_->estado.programa_ruta.clear();
     impl_->estado.programa_titulo = titulo;
     impl_->estado.escenario_id.clear();
@@ -122,16 +136,24 @@ bool Engine::NuevoPrograma(const std::string& titulo) {
 }
 
 bool Engine::GuardarPrograma(const std::string& ruta) {
-    // TODO(P0): serializar Programa actual con AhpFormat::Guardar.
-    return !ruta.empty();
+    std::lock_guard<std::mutex> lk(impl_->m);
+    if (!impl_->hay_programa) return false;
+    std::string destino = ruta.empty() ? impl_->estado.programa_ruta : ruta;
+    if (destino.empty()) return false;
+    if (!AhpFormat::Guardar(destino, impl_->programa_actual)) return false;
+    impl_->estado.programa_ruta = destino;
+    return true;
 }
 
 bool Engine::CerrarPrograma() {
     std::lock_guard<std::mutex> lk(impl_->m);
+    impl_->programa_actual = Programa{};
+    impl_->hay_programa = false;
     impl_->estado.programa_ruta.clear();
     impl_->estado.programa_titulo.clear();
     impl_->estado.escenario_id.clear();
     impl_->estado.elemento_id.clear();
+    impl_->estado.linea_actual = 0;
     impl_->Emitir(EventoMotor::ProgramaCerrado);
     return true;
 }
@@ -146,76 +168,130 @@ std::vector<std::string> Engine::Recientes() const {
 }
 
 // --- Proyección --------------------------------------------------------
+namespace {
+
+PosPrograma PosDesdeEstado(const EstadoMotor& e) {
+    PosPrograma pos;
+    pos.escenario_id     = e.escenario_id;
+    pos.escenario_nombre = e.escenario_nombre;
+    pos.elemento_id      = e.elemento_id;
+    pos.elemento_titulo  = e.elemento_titulo;
+    pos.linea            = e.linea_actual;
+    pos.valida           = !e.escenario_id.empty();
+    return pos;
+}
+
+void EstadoDesdePos(EstadoMotor* e, const PosPrograma& pos) {
+    e->escenario_id     = pos.escenario_id;
+    e->escenario_nombre = pos.escenario_nombre;
+    e->elemento_id      = pos.elemento_id;
+    e->elemento_titulo  = pos.elemento_titulo;
+    e->linea_actual     = pos.linea;
+}
+
+} // namespace
+
 bool Engine::IniciarProyeccion() {
     if (!impl_->ventana) return false;
     impl_->ventana->Mostrar();
-    std::lock_guard<std::mutex> lk(impl_->m);
-    impl_->estado.salida_visible = true;
-    impl_->Emitir(EventoMotor::SalidaCambiada);
+    {
+        std::lock_guard<std::mutex> lk(impl_->m);
+        impl_->estado.salida_visible = true;
+        impl_->Emitir(EventoMotor::SalidaCambiada);
+    }
     return true;
 }
 
 bool Engine::DetenerProyeccion() {
     if (!impl_->ventana) return false;
     impl_->ventana->Ocultar();
-    std::lock_guard<std::mutex> lk(impl_->m);
-    impl_->estado.salida_visible = false;
-    impl_->Emitir(EventoMotor::SalidaCambiada);
+    {
+        std::lock_guard<std::mutex> lk(impl_->m);
+        impl_->estado.salida_visible = false;
+        impl_->Emitir(EventoMotor::SalidaCambiada);
+    }
     return true;
 }
 
 bool Engine::IrEscenario(const std::string& escenario_id) {
-    std::lock_guard<std::mutex> lk(impl_->m);
-    impl_->estado.escenario_id = escenario_id;
-    impl_->estado.elemento_id.clear();
-    impl_->estado.linea_actual = 0;
-    impl_->Emitir(EventoMotor::EstadoCambiado);
+    {
+        std::lock_guard<std::mutex> lk(impl_->m);
+        impl_->estado.escenario_id = escenario_id;
+        impl_->estado.elemento_id.clear();
+        impl_->estado.linea_actual = 0;
+        impl_->Emitir(EventoMotor::EstadoCambiado);
+    }
     return true;
 }
 
 bool Engine::IrElemento(const std::string& escenario_id,
                         const std::string& elemento_id) {
-    std::lock_guard<std::mutex> lk(impl_->m);
-    impl_->estado.escenario_id = escenario_id;
-    impl_->estado.elemento_id  = elemento_id;
-    impl_->estado.linea_actual = 0;
-    impl_->Emitir(EventoMotor::EstadoCambiado);
+    {
+        std::lock_guard<std::mutex> lk(impl_->m);
+        impl_->estado.escenario_id = escenario_id;
+        impl_->estado.elemento_id  = elemento_id;
+        impl_->estado.linea_actual = 0;
+        impl_->Emitir(EventoMotor::EstadoCambiado);
+    }
     return true;
 }
 
 bool Engine::IrLinea(const std::string& escenario_id,
                       const std::string& elemento_id,
                       int linea) {
-    std::lock_guard<std::mutex> lk(impl_->m);
-    impl_->estado.escenario_id = escenario_id;
-    impl_->estado.elemento_id  = elemento_id;
-    impl_->estado.linea_actual = linea;
-    impl_->Emitir(EventoMotor::EstadoCambiado);
+    {
+        std::lock_guard<std::mutex> lk(impl_->m);
+        impl_->estado.escenario_id = escenario_id;
+        impl_->estado.elemento_id  = elemento_id;
+        impl_->estado.linea_actual = linea;
+        impl_->Emitir(EventoMotor::EstadoCambiado);
+    }
     return true;
 }
 
 bool Engine::Siguiente() {
-    // TODO(P0): navegar dentro del programa cargado.
+    bool se_movio = false;
+    {
+        std::lock_guard<std::mutex> lk(impl_->m);
+        if (impl_->hay_programa) {
+            PosPrograma pos = PosDesdeEstado(impl_->estado);
+            se_movio = AvanzarPos(impl_->programa_actual, &pos);
+            EstadoDesdePos(&impl_->estado, pos);
+        }
+    }
     impl_->Emitir(EventoMotor::EstadoCambiado);
-    return true;
+    return se_movio;
 }
 
 bool Engine::Anterior() {
+    bool se_movio = false;
+    {
+        std::lock_guard<std::mutex> lk(impl_->m);
+        if (impl_->hay_programa) {
+            PosPrograma pos = PosDesdeEstado(impl_->estado);
+            se_movio = RetrocederPos(impl_->programa_actual, &pos);
+            EstadoDesdePos(&impl_->estado, pos);
+        }
+    }
     impl_->Emitir(EventoMotor::EstadoCambiado);
-    return true;
+    return se_movio;
 }
 
 bool Engine::SetNegro(bool activo) {
-    std::lock_guard<std::mutex> lk(impl_->m);
-    impl_->estado.negro = activo;
-    impl_->Emitir(EventoMotor::SalidaCambiada);
+    {
+        std::lock_guard<std::mutex> lk(impl_->m);
+        impl_->estado.negro = activo;
+        impl_->Emitir(EventoMotor::SalidaCambiada);
+    }
     return true;
 }
 
 bool Engine::SetLogo(bool activo) {
-    std::lock_guard<std::mutex> lk(impl_->m);
-    impl_->estado.logo = activo;
-    impl_->Emitir(EventoMotor::SalidaCambiada);
+    {
+        std::lock_guard<std::mutex> lk(impl_->m);
+        impl_->estado.logo = activo;
+        impl_->Emitir(EventoMotor::SalidaCambiada);
+    }
     return true;
 }
 
@@ -236,9 +312,11 @@ bool Engine::SeleccionarMonitor(const std::string& dispositivo) {
     if (!impl_->ventana) return false;
     MonitorId m{dispositivo, ""};
     impl_->ventana->CambiarMonitor(m);
-    std::lock_guard<std::mutex> lk(impl_->m);
-    impl_->estado.monitor_dispositivo = dispositivo;
-    impl_->Emitir(EventoMotor::MonitorCambiado);
+    {
+        std::lock_guard<std::mutex> lk(impl_->m);
+        impl_->estado.monitor_dispositivo = dispositivo;
+        impl_->Emitir(EventoMotor::MonitorCambiado);
+    }
     return true;
 }
 
@@ -258,6 +336,17 @@ bool Engine::ObtenerVersiculo(const std::string& biblia,
     return true;
 }
 
+std::vector<Versiculo> Engine::BuscarEnBiblia(const std::string& texto,
+                                              int limite) const {
+    if (!impl_->biblia_activa) return {};
+    return impl_->biblia_activa->Buscar(texto, limite);
+}
+
+std::vector<std::string> Engine::FavoritosBiblia() const {
+    if (!impl_->biblia_activa) return {};
+    return impl_->biblia_activa->Favoritos();
+}
+
 // --- Cantos ------------------------------------------------------------
 std::vector<std::string> Engine::ListarCantos() const {
     if (!impl_->canciones) return {};
@@ -266,6 +355,22 @@ std::vector<std::string> Engine::ListarCantos() const {
     out.reserve(lista.size());
     for (auto& c : lista) out.push_back(c.titulo);
     return out;
+}
+
+std::vector<Canto> Engine::BuscarCantos(const std::string& texto,
+                                        int limite) const {
+    if (!impl_->canciones) return {};
+    return impl_->canciones->Buscar(texto, limite);
+}
+
+bool Engine::ObtenerCanto(std::int64_t id, CantoDetalle* out) const {
+    if (!impl_->canciones) return false;
+    return impl_->canciones->Obtener(id, out);
+}
+
+bool Engine::BibliaLista() const {
+    return impl_->biblia_activa &&
+           impl_->biblia_activa->TotalVersiculos() > 0;
 }
 
 // --- Sesión ------------------------------------------------------------
@@ -286,14 +391,17 @@ bool Engine::CargarSesion() {
 
 bool Engine::GuardarSesion() {
     Sesion s;
-    s.programa_ruta       = impl_->estado.programa_ruta;
-    s.escenario_id        = impl_->estado.escenario_id;
-    s.elemento_id         = impl_->estado.elemento_id;
-    s.linea_actual        = impl_->estado.linea_actual;
-    s.salida_visible      = impl_->estado.salida_visible;
-    s.negro               = impl_->estado.negro;
-    s.logo                 = impl_->estado.logo;
-    s.monitor_dispositivo = impl_->estado.monitor_dispositivo;
+    {
+        std::lock_guard<std::mutex> lk(impl_->m);
+        s.programa_ruta       = impl_->estado.programa_ruta;
+        s.escenario_id        = impl_->estado.escenario_id;
+        s.elemento_id         = impl_->estado.elemento_id;
+        s.linea_actual        = impl_->estado.linea_actual;
+        s.salida_visible      = impl_->estado.salida_visible;
+        s.negro               = impl_->estado.negro;
+        s.logo                 = impl_->estado.logo;
+        s.monitor_dispositivo = impl_->estado.monitor_dispositivo;
+    }
     return Sesion::Guardar(Sesion::RutaPorDefecto(), s);
 }
 
