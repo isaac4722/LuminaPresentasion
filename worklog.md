@@ -356,3 +356,53 @@ Stage Summary:
 - Pendiente siguiente sesión: capa "Escenario" de la herencia (doc
   5.4) como nivel adicional; exportadores reales (9.3) conectando
   PlanExport; rasterizador del modo directo (AGENT.md P1).
+
+---
+## Sesión 2026-09-28 (VII) — exportadores reales (9.3) + portable e instaladores en CI
+
+Work Log:
+- feat(export) 813765a — los tres exportadores del doc 9.3 viven ahora
+  en el núcleo, portable y sin dependencias nuevas:
+  * PlanExport::EnumerarUnidades: enumeración exacta de unidades
+    (ContarUnidades delega en ella: plan y ejecución jamás discrepan).
+  * ZipInterno.h: CRC32 compartido con el lector + EscritorZip de
+    entradas almacenadas (método 0, OPC válido).
+  * ExportarPptx: paquete .pptx mínimo válido ISO/IEC-29500
+    (content types, relaciones, máster, layout blank, tema completo
+    mínimo, diapositiva por unidad). Round-trip verificado con el
+    propio LectorPptx y con zipfile de Python (CRC + XML).
+  * ExportarPdf: PDF 1.4 (960x540 pt), Helvetica base-14 con
+    WinAnsiEncoding (acentos en un byte), xref byte a byte, envoltura
+    de líneas y aviso de recorte.
+  * CodificarPng + ExportarImagenes: PNG RGBA válido (zlib con
+    bloques almacenados, adler32, CRC por chunk) y el punto de
+    enganche del rasterizador del shell (D2D, objetivo 1920x1080).
+  * Medios no incrustados en v1: referencia textual + avisos, nada
+    silencioso. 13 casos nuevos en test_exportadores.cpp.
+- build(paquete) 7e231a6 — la NOTA del propietario (portable por
+  arquitectura + instaladores):
+  * build/empaquetar.ps1: monta el árbol portable desde los
+    artefactos de Actions; el mismo árbol alimenta el .zip portable
+    y el instalador Inno Setup (una sola fuente de verdad).
+  * installer/FusionHP.iss reescrito a /DPACKAGE (el pack anterior
+    apuntaba a rutas de build que no existen en CI y nunca se
+    ejercitó).
+  * qt-shell pasa a CRT estática (/MT): el paquete no necesita VC
+    redist; windeployqt despliega las DLL de Qt en el job qt_shell.
+  * ci.yml: jobs portable (x86/x64) e instaladores (dual) en cada
+    push; release solo en v* adjuntando los 4 entregables.
+- Bugs hallados en la verificación local (tests, no producto): doctest
+  no admite && en CHECK; el test del adler32 comparaba solo la parte
+  baja; el parser de xref saltaba el encabezado "0 N"; la lambda de
+  rasterizador fallido no llenaba el buffer (producto correcto).
+- Verificación local: 92 casos / 697 aserciones en verde (gcc-14,
+  -Wall -Wextra, sin warnings). Suite completa previa incluida.
+
+Stage Summary:
+- Sección 9.3 COMPLETA en su parte portable; queda el rasterizador D2D
+  del shell (P1) y la incrustación de imágenes en pptx/pdf.
+- Portable e instaladores se generan ahora en cada push; al etiquetar
+  v* se publican los cuatro entregables en la release.
+- Pendiente siguiente sesión: rasterizador del modo directo
+  (DiapositivaPptx + tema → D2D) y capa "Escenario" de la herencia
+  (doc 5.4).
