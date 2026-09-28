@@ -18,8 +18,12 @@ COMO SE USA
 2. Alternativa de escritorio directa: qt\FusionQtShell.exe (tambien
    proyecta paquetes PPTX en el modo directo del nucleo).
 3. Para desinstalar: borra esta carpeta. No queda nada en el sistema.
-4. Si algo no abriera, revisa runtime\arranque.log: cada paso del
-   arranque queda registrado con su causa.
+4. Si algo no abriera, revisa runtime\arranque.log (cada paso del
+   arranque queda registrado con su causa) y runtime\nucleo.log (la
+   bitacora del nucleo: BDs, siembra de la biblia y servidor IPC).
+   Nota: si la carpeta del programa no admite escritura (instalado en
+   Archivos de programa), ambos logs viven en
+   %LOCALAPPDATA%\FUSION-HP\runtime.
 
 CONTENIDO
 ---------

@@ -613,3 +613,79 @@ Adenda de la sesión X — CI y publicación:
 - Suite final: 136 casos / 1116 aserciones (gcc-14, 0 avisos) + 14
   tests gestionados C# + doble arquitectura MSVC + gate + portable +
   instaladores.
+
+## Sesión XI — causa raíz del "no abre Core" resuelta (IPC de lado a lado)
+
+Reporte del propietario: "Error no abre Core."
+
+### Diagnóstico (cadena completa)
+
+1. CAUSA DIRECTA: IpcClient.cs le pasaba la RUTA completa
+   (\\.\pipe\FusionHP-ipc) a NamedPipeClientStream, que antepone
+   \\.\pipe\ por su cuenta: la ruta efectiva salía malformada
+   (\\.\pipe\\\.\pipe\FusionHP-ipc) y Conectar() fallaba SIEMPRE. La
+   consola mostraba "No se pudo conectar al núcleo (FusionCore.exe)" y
+   salía; el launcher cortaba el árbol. Nadie lo había visto antes
+   porque el IPC nunca se había ejercitado de extremo a extremo.
+2. DESCUBIERTO DETRÁS (todo corregido en esta tanda):
+   - El núcleo JAMÁS llamó a IpcServer::SetHandler: aunque el cliente
+     conectara, toda respuesta volvía VACÍA (el protocolo estaba a medias).
+   - El servidor cortaba la conexión tras UN mensaje (la consola usa la
+     misma conexión toda la sesión).
+   - Respuestas sin '\n' (los clientes leen con ReadLine) y sin eco de id.
+   - IpcServer::Detener() en DEADLOCK (ConnectNamedPipe bloqueante +
+     join): FusionCore.exe nunca salía limpio.
+   - En Program Files el núcleo no podía crear cancionero.fdb ni
+     session.json (sin escritura): BDs muertas y sesión sin persistir.
+   - El paquete NO llevaba ninguna .fdb: la biblia iba vacía aunque
+     abriera (data/bibles solo trae RVR1909.json).
+   - ListarBiblias devolvía una lista INVENTADA (RV1960/NVI/RVG).
+   - El launcher registraba "arrancado (oculto)" sin verificar que el
+     núcleo siguiera vivo: una muerte temprana era indetectable.
+
+### Piezas (1 pieza = 1 commit)
+
+- fix(ipc) bddfe6e: cliente gestionado — nombre del pipe SIN prefijo
+  (public const NombrePipe para tests), 3 reintentos de 3 s, UltimoError
+  con detalle real mostrado por Program.cs (apunta a arranque.log);
+  3 tests gestionados nuevos.
+- fix(ipc) 4073d33: servidor IPC — conexión multimensaje, framing '\n'
+  garantizado, espera de conexiones troceada y cancelable (overlapped +
+  150 ms; Detener sale en <=150 ms, sin deadlock), EmitirEvento real
+  (solo conexiones suscritas vía RespuestaIpc::suscribir), estado
+  compartido en shared_ptr (hilos de atención sobreviven a la salida).
+- feat(nucleo) db5294e: despachador ipc.v1 COMPLETO (IpcDespacho portable
+  con IServicioNucleo + AdaptadorEngine separado solo-FusionCore):
+  estado.lector/suscribir, programa.abrir/nuevo/guardar/cerrar/recientes,
+  proyeccion.iniciar/detener/escenario/elemento/linea/siguiente/anterior/
+  negro/logo/ocultar, monitor.listar/seleccionar, biblia.listar/obtener/
+  buscar/favoritos, canto.listar/obtener/buscar, diag.autotest/log_tail;
+  errores explícitos con los códigos del protocolo; tema.* →
+  E_UNSUPPORTED honesto. Navegacion.h portable: siguiente/anterior REALES
+  (línea→elemento→escenario, salta vacíos, recoloca ids de otra versión);
+  Engine guarda el Programa cargado y GuardarPrograma serializa de verdad
+  (era TODO que descartaba el programa). main.cpp con bitácora y
+  try/catch global (códigos de salida 2/3/4 documentados). 23 casos
+  nuevos (despachador + navegación).
+- fix(nucleo) 2d05f49: Rutas (raíz de datos ESCRIBIBLE: portable junto al
+  exe; %LOCALAPPDATA%\FUSION-HP si está instalado; sin Registro, sin red),
+  rutas UTF-8 para sqlite y anchas para E/S, SIEMBRA de RVR1909.fdb desde
+  el asset JSON en el primer arranque, ListarBiblias real (*.fdb
+  presentes), bitácora unificada runtime\nucleo.log servible por
+  diag.log_tail. Session.cpp con rutas anchas (raíces con acentos).
+- fix(lanzador) ca5c3a9: tras arrancar el núcleo espera 2,5 s y registra
+  si murió (con código) o sigue vivo; WaitNamedPipe para evidenciar
+  "pipe IPC listo"; arranque.log en la MISMA raíz escribible que el
+  núcleo (en Program Files ni el log se podía escribir); el aviso
+  final indica dónde está el log.
+
+### Verificación y estado
+
+- Suite local gcc-14: 162 casos / 1247 aserciones VERDE, 0 avisos
+  (-Wall -Wextra). El despachador y la navegación se prueban con un
+  IServicioNucleo falso (portable); el adaptador/Engine/Rutas quedan
+  para MSVC en CI (dependen de Windows).
+- Docs: LEEME-portable.txt explica los dos logs y su ubicación.
+- Pendiente para próximas sesiones: eventos evento.* en las carcasas
+  (suscripción ya funcional en el transporte), gestión de temas por IPC,
+  net35 dual-target, subrayado por-run en D2D, prstGeom/custGeom.
