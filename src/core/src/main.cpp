@@ -17,37 +17,12 @@
 #include "fusion/core/Engine.h"
 #include "fusion/core/IpcServer.h"
 #include "fusion/core/IpcDespacho.h"
+#include "fusion/core/Rutas.h"
 
 #include <cstdio>
 #include <string>
 
 namespace {
-
-// Bitácora del núcleo: <exe>\runtime\nucleo.log (texto UTF-8).
-void Bitacora(const std::string& linea) {
-    wchar_t buf[MAX_PATH] = {0};
-    GetModuleFileNameW(nullptr, buf, MAX_PATH);
-    std::wstring exe(buf);
-    size_t pos = exe.find_last_of(L"\\/");
-    std::wstring dir = (pos != std::wstring::npos) ? exe.substr(0, pos) : L".";
-    CreateDirectoryW((dir + L"\\runtime").c_str(), nullptr);
-    HANDLE h = CreateFileW((dir + L"\\runtime\\nucleo.log").c_str(),
-                           FILE_APPEND_DATA, FILE_SHARE_READ, nullptr,
-                           OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
-    if (h == INVALID_HANDLE_VALUE) return;
-    SYSTEMTIME st;
-    GetLocalTime(&st);
-    char sello[64];
-    swprintf_s(sello, 64, "[%04u-%02u-%02u %02u:%02u:%02u] ",
-               st.wYear, st.wMonth, st.wDay,
-               st.wHour, st.wMinute, st.wSecond);
-    DWORD escritos = 0;
-    WriteFile(h, sello, static_cast<DWORD>(strlen(sello)), &escritos, nullptr);
-    WriteFile(h, linea.data(), static_cast<DWORD>(linea.size()),
-              &escritos, nullptr);
-    WriteFile(h, "\r\n", 2, &escritos, nullptr);
-    CloseHandle(h);
-}
 
 // Manejo simple de línea de comandos:
 //   FusionCore.exe --importar-biblia --formato json --entrada x.json --salida y.fdb
@@ -74,9 +49,14 @@ CliArgs ParseCli(int argc, wchar_t** argv) {
 } // namespace
 
 int APIENTRY wWinMain(HINSTANCE, HINSTANCE, PWSTR cmd_line, int) {
+    using fusion::rutas::Bitacora;
     try {
         Bitacora(std::string("FusionCore ") + fusion::VersionString() +
-                 " — arranque");
+                 " — arranque; raíz de datos: " +
+                 std::string(fusion::rutas::CarpetaEscribible(
+                                 fusion::rutas::RaizInstalacion())
+                                 ? "portable (junto al exe)"
+                                 : "%LOCALAPPDATA%\\FUSION-HP"));
         int argc;
         LPWSTR* argv = CommandLineToArgvW(cmd_line, &argc);
         if (!argv) {

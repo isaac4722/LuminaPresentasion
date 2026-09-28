@@ -117,6 +117,7 @@ add_executable(FusionCore WIN32
     ${FUSION_SRC_DIR}/core/ExportadorPng.cpp
     ${FUSION_SRC_DIR}/core/IpcDespacho.cpp
     ${FUSION_SRC_DIR}/core/AdaptadorEngine.cpp
+    ${FUSION_SRC_DIR}/core/Rutas.cpp
 
     ${FUSION_SRC_DIR}/data/SongDatabase.cpp
     ${FUSION_SRC_DIR}/data/BibleDatabase.cpp

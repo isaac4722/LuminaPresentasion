@@ -6,7 +6,7 @@
 
 #include "fusion/core/IpcDespacho.h"
 #include "fusion/core/Engine.h"
-#include "fusion/core/Session.h"
+#include "fusion/core/Rutas.h"
 
 #include <fstream>
 #include <string>
@@ -135,11 +135,8 @@ std::vector<PruebaDiag> AdaptadorEngine::Autotest() {
 }
 
 std::vector<std::string> AdaptadorEngine::ColaLog(int n) {
-    // La bitácora del núcleo vive junto a la sesión (runtime/nucleo.log).
-    std::string ruta = Sesion::RutaPorDefecto();
-    size_t pos = ruta.find_last_of("\\/");
-    ruta = (pos != std::string::npos) ? ruta.substr(0, pos) : std::string(".");
-    ruta += "\\nucleo.log";
+    // La bitácora del núcleo vive en la raíz de datos (runtime/nucleo.log).
+    const std::string ruta = rutas::BitacoraNucleo();
 
     std::vector<std::string> todas;
     std::ifstream f(ruta, std::ios::binary);

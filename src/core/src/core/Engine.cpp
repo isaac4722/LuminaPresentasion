@@ -9,6 +9,7 @@
 #include "fusion/core/Renderer.h"
 #include "fusion/core/ProjectionWindow.h"
 #include "fusion/core/IpcServer.h"
+#include "fusion/core/Rutas.h"
 #include "fusion/data/SongDatabase.h"
 #include "fusion/data/BibleDatabase.h"
 #include "fusion/data/AhpFormat.h"
@@ -44,6 +45,35 @@ struct Engine::Impl {
 Engine::Engine()  : impl_(std::make_unique<Impl>()) {}
 Engine::~Engine() { Detener(); }
 
+namespace {
+
+using rutas::ExisteArchivo;
+
+// Primer arranque: si RVR1909.fdb no existe en la raíz de datos, se
+// siembra desde el asset de solo lectura <exe>\data\bibles\RVR1909.json
+// (importador JSON integrado; 100% offline).
+void SembrarBibliaRVR1909SiFalta() {
+    std::wstring destino = rutas::CarpetaBibliasW() + L"\\RVR1909.fdb";
+    if (ExisteArchivo(destino)) return;
+    std::string semilla = rutas::SemillaRVR1909Json();
+    if (semilla.empty()) {
+        rutas::Bitacora("AVISO: sin semilla RVR1909.json junto al ejecutable; "
+                        "la biblia quedará vacía");
+        return;
+    }
+    BibleDatabase b;
+    if (!b.Abrir(rutas::BibliaFdb("RVR1909.fdb"))) {
+        rutas::Bitacora("AVISO: no se pudo crear RVR1909.fdb en la raíz de datos");
+        return;
+    }
+    int n = b.ImportarJson(semilla);
+    b.Cerrar();
+    rutas::Bitacora("RVR1909.fdb sembrada con " + std::to_string(n) +
+                    " versículos");
+}
+
+} // namespace
+
 bool Engine::Iniciar() {
     if (impl_->corriendo.exchange(true)) return true;
 
@@ -76,12 +106,26 @@ bool Engine::Iniciar() {
         impl_->renderer->Inicializar(impl_->ventana->Hwnd());
     }
 
-    // BDs
+    // BDs en la raíz de datos ESCRIBIBLE (portable: junto al exe;
+    // instalado: %LOCALAPPDATA%\FUSION-HP). Sin esto, en Program Files
+    // sqlite no podía crear los .fdb y las BD arrancaban muertas.
     impl_->canciones = std::make_unique<SongDatabase>();
-    impl_->canciones->Abrir("data/cancionero.fdb");
+    if (impl_->canciones->Abrir(rutas::CancioneroFdb())) {
+        rutas::Bitacora("cancionero.fdb listo en la raíz de datos");
+    } else {
+        rutas::Bitacora("AVISO: no se pudo abrir/crear cancionero.fdb en "
+                        "la raíz de datos");
+    }
 
+    SembrarBibliaRVR1909SiFalta();
     impl_->biblia_activa = std::make_unique<BibleDatabase>();
-    impl_->biblia_activa->Abrir("data/bibles/RVR1909.fdb");
+    if (impl_->biblia_activa->Abrir(rutas::BibliaFdb("RVR1909.fdb"))) {
+        rutas::Bitacora("biblia activa: RVR1909 (" +
+                        std::to_string(impl_->biblia_activa->TotalVersiculos()) +
+                        " versículos)");
+    } else {
+        rutas::Bitacora("AVISO: no se pudo abrir/crear RVR1909.fdb");
+    }
 
     return true;
 }
@@ -322,8 +366,25 @@ bool Engine::SeleccionarMonitor(const std::string& dispositivo) {
 
 // --- Biblia ------------------------------------------------------------
 std::vector<std::string> Engine::ListarBiblias() const {
-    // TODO(P0): barrer data/bibles/*.fdb
-    return { "RVR1909", "RV1960", "NVI", "RVG" };
+    // Biblias realmente presentes: barrer *.fdb en la carpeta de biblias
+    // de la raíz de datos (antes devolvía una lista inventada).
+    std::vector<std::string> out;
+    WIN32_FIND_DATAW fd;
+    HANDLE h = FindFirstFileW(
+        (rutas::CarpetaBibliasW() + L"\\*.fdb").c_str(), &fd);
+    if (h == INVALID_HANDLE_VALUE) return out;
+    do {
+        if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) continue;
+        std::wstring nombre(fd.cFileName);
+        size_t punto = nombre.rfind(L'.');
+        if (punto != std::wstring::npos) nombre.resize(punto);
+        if (!nombre.empty()) {
+            std::string s(nombre.begin(), nombre.end());
+            out.push_back(s);
+        }
+    } while (FindNextFileW(h, &fd));
+    FindClose(h);
+    return out;
 }
 
 bool Engine::ObtenerVersiculo(const std::string& biblia,
