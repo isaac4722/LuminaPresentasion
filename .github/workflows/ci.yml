@@ -374,6 +374,11 @@ jobs:
     runs-on: windows-2022
     needs: [instaladores, portable]
     if: startsWith(github.ref, 'refs/tags/v')
+    # El GITHUB_TOKEN por defecto no puede crear releases ni subir
+    # activos sin este permiso (403 "Resource not accessible by
+    # integration"); contenido de escritura, nada más.
+    permissions:
+      contents: write
     steps:
       - name: Descargar instaladores y portables
         uses: actions/download-artifact@v4
