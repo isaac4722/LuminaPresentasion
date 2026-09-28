@@ -6,6 +6,7 @@
 #define NOMINMAX
 #include <windows.h>
 
+#include <cstdio>
 #include <cstring>
 #include <string>
 
@@ -132,9 +133,9 @@ void Bitacora(const std::string& linea) {
     SYSTEMTIME st;
     GetLocalTime(&st);
     char sello[64];
-    swprintf_s(sello, 64, "[%04u-%02u-%02u %02u:%02u:%02u] ",
-               st.wYear, st.wMonth, st.wDay,
-               st.wHour, st.wMinute, st.wSecond);
+    snprintf(sello, sizeof(sello), "[%04u-%02u-%02u %02u:%02u:%02u] ",
+             st.wYear, st.wMonth, st.wDay,
+             st.wHour, st.wMinute, st.wSecond);
     DWORD escritos = 0;
     WriteFile(h, sello, static_cast<DWORD>(strlen(sello)), &escritos, nullptr);
     WriteFile(h, linea.data(), static_cast<DWORD>(linea.size()),
