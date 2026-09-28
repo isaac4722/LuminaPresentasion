@@ -210,6 +210,31 @@ jobs:
           if ($LASTEXITCODE -ne 0) { Write-Host "##[error]windeployqt falló"; exit 1 }
           Get-ChildItem "src\qt-shell\build-${{ matrix.arquitectura }}" | Select-Object -ExpandProperty Name
 
+      # Las DLL oficiales de Qt 5.15.2 (msvc2019) enlazan el runtime VC++
+      # DINÁMICO (msvcp140/vcruntime140). Sin esas DLL junto al shell, en
+      # equipos limpios Qt no carga ("VCRUNTIME140.dll no encontrado") y el
+      # programa "no abre". Despliegue app-local oficial (CRT de VC redist).
+      - name: Runtime VC++ app-local para las DLL de Qt
+        shell: pwsh
+        run: |
+          $plataforma = if ("${{ matrix.arquitectura }}" -eq "x86") { "x86" } else { "x64" }
+          $build = "src\qt-shell\build-${{ matrix.arquitectura }}"
+          $crt = Get-ChildItem -Path "$env:VCINSTALLDIR\Redist\MSVC" -Recurse -Filter "msvcp140.dll" -ErrorAction Stop |
+                 Where-Object { $_.FullName -match "\\$plataforma\\Microsoft\.VC.+\.CRT$" } |
+                 Sort-Object FullName | Select-Object -Last 1
+          if (-not $crt) {
+            Write-Host "##[error]No se halló el redist VC++ para $plataforma bajo $env:VCINSTALLDIR\Redist\MSVC"
+            exit 1
+          }
+          $dir = Split-Path -Parent $crt.FullName
+          foreach ($dll in @("msvcp140.dll", "vcruntime140.dll", "vcruntime140_1.dll")) {
+            $origen = Join-Path $dir $dll
+            if (Test-Path $origen) { Copy-Item $origen $build -Force }
+          }
+          Write-Host "== Runtime VC++ ($plataforma) copiado desde $dir =="
+          Get-ChildItem $build -Filter "msv*.dll" | Select-Object -ExpandProperty Name
+          Get-ChildItem $build -Filter "vcruntime*.dll" | Select-Object -ExpandProperty Name
+
       - name: Subir artefacto
         uses: actions/upload-artifact@v4
         with:

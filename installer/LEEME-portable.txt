@@ -12,9 +12,14 @@ COMO SE USA
    - verifica .NET Framework 4.8 (incluido en Windows 10/11 actual;
      si falta, usa redist\ndp48-x86-x64-offline.exe si lo colocas ahi),
    - arranca el nucleo (FusionCore.exe), dueño de la proyeccion,
-   - abre la consola gestionada (gestionado\FusionHP.Managed.exe).
-2. Alternativa de escritorio: qt\FusionQtShell.exe.
+   - abre la consola gestionada (gestionado\FusionHP.Managed.exe);
+     si .NET 4.8 no esta disponible, abre el shell de escritorio
+     qt\FusionQtShell.exe, que no necesita .NET.
+2. Alternativa de escritorio directa: qt\FusionQtShell.exe (tambien
+   proyecta paquetes PPTX en el modo directo del nucleo).
 3. Para desinstalar: borra esta carpeta. No queda nada en el sistema.
+4. Si algo no abriera, revisa runtime\arranque.log: cada paso del
+   arranque queda registrado con su causa.
 
 CONTENIDO
 ---------

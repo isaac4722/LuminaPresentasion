@@ -101,6 +101,12 @@ $qtDll = Get-ChildItem (Join-Path $Destino 'qt') -Filter 'Qt5Core.dll' -Recurse 
 if (-not $qtDll) {
     Write-Host "##[warning]empaquetar: Qt5Core.dll no está junto al shell Qt (¿faltó windeployqt?)"
 }
+# Las DLL de Qt enlazan el runtime VC++ dinámico: sin msvcp140/vcruntime140
+# app-local, el shell no abre en equipos limpios (causa raíz del "no abre").
+$msvcp = Get-ChildItem (Join-Path $Destino 'qt') -Filter 'msvcp140.dll' -Recurse -ErrorAction SilentlyContinue
+if (-not $msvcp) {
+    Write-Host "##[warning]empaquetar: falta msvcp140.dll junto al shell Qt (¿faltó el paso 'Runtime VC++ app-local'?)"
+}
 # Limpiar restos de compilación que el artefacto de qt_shell arrastra
 # (el artefacto es el build dir completo, útil para depurar; el
 # paquete solo lleva lo que se ejecuta).
