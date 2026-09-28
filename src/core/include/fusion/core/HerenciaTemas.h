@@ -1,11 +1,20 @@
 // src/core/include/fusion/core/HerenciaTemas.h
-// Herencia de temas en 4 niveles con informe de fidelidad.
+// Herencia de temas con informe de fidelidad.
 //
-// Niveles, de menor a mayor prioridad (docs/agent/format_ahp_v1.md):
+// Niveles, de menor a mayor prioridad (doc técnico 5.4 + extensión):
 //   1. Tema raíz del programa     (meta.tema_raiz)
 //   2. Plantilla del escenario    (escenario.tema)
-//   3. Tema override del elemento (elemento.tema_override)
-//   4. Tema runtime aplicado en caliente (Sesion.tema_runtime)
+//   3. Capa del Escenario         (escenario.fondo + escenario.tema_escenario)
+//   4. Tema override del elemento (elemento.tema_override)
+//   5. Tema runtime aplicado en caliente (Sesion.tema_runtime)
+//
+// El nivel 3 (Escenario) es la cascada del doc 5.4: lo que el operador
+// fija para TODO el escenario por encima de su plantilla. El campo
+// `fondo` (color sólido, destino del "fondo del diseño" al importar
+// PPTX, doc 9.2.6) se pliega en esta capa vía CapaEscenario(); las
+// claves del bolso inline `tema_escenario` ganan sobre el plegado.
+// El nivel 5 (runtime) es extensión propia, documentada como desviación
+// en docs/agent/themes.md.
 //
 // Cada nivel puede sobreescribir selectivamente propiedades del anterior.
 // El informe de fidelidad enumera qué propiedades fueron sobreescritas en
@@ -42,10 +51,11 @@ using CapaTema = std::map<std::string, std::string>;
 
 // Niveles de la herencia, de menor a mayor prioridad.
 enum class NivelTema {
-    Raiz     = 0,
-    Escenario = 1,
-    Elemento = 2,
-    Runtime  = 3,
+    Raiz      = 0,
+    Plantilla = 1,   // escenario.tema (plantilla de escenario, doc 5.4)
+    Escenario = 2,   // capa inline del escenario (fondo + tema_escenario)
+    Elemento  = 3,
+    Runtime   = 4,
 };
 
 // Nombre legible del nivel (para el informe y los logs).
@@ -74,14 +84,30 @@ struct ResolucionTema {
 
 class HerenciaTemas {
 public:
-    // Resuelve los 4 niveles en orden de prioridad creciente.
+    // Resuelve los 5 niveles en orden de prioridad creciente
+    // (doc 5.4: Tema → Plantilla → Escenario → Elemento, + runtime).
     // Una capa nula se ignora (el nivel no participa). Devuelve el estilo
     // resuelto y el informe de fidelidad correspondiente.
     static ResolucionTema Resolver(const CapaTema* raiz,
+                                   const CapaTema* plantilla,
                                    const CapaTema* escenario,
                                    const CapaTema* elemento,
                                    const CapaTema* runtime);
 };
+
+// Construye la capa del nivel Escenario (doc 5.4) a partir de los campos
+// del escenario en ahp.v1:
+//   - `fondo_hex` (escenario.fondo, "#RGB"/"#RRGGBB" o vacío) se pliega
+//     como { "fondo.tipo": "solido", "fondo.color1": fondo_hex }.
+//   - `tema_escenario_inline` (escenario.tema_escenario, bolso de claves
+//     planas) se aplica ENCIMA del plegado: si define una clave que el
+//     fondo ya aportó, gana la del bolso inline (lo explícito manda).
+// Un color vacío y un bolso vacío devuelven una capa vacía (el nivel no
+// participa en la resolución). No valida el formato del color: eso lo
+// hace AhpFormat::Validar; aquí un valor inválido simplemente queda en
+// la capa y AplicarAEstilos lo ignorará conservando el anterior.
+CapaTema CapaEscenario(const std::string& fondo_hex,
+                       const CapaTema& tema_escenario_inline);
 
 // Aplica un bolso de propiedades resueltas a los estilos del renderizador
 // (EstiloTexto + Fondo de Renderer.h). Las claves desconocidas se

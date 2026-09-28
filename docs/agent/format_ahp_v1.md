@@ -77,6 +77,37 @@ hereda del tema. Es el destino del "fondo del diseño" al importar un
 PPTX (doc técnico 9.2.6: el fondo del diseño se traduce a fondo del
 Escenario). `Validar()` rechaza valores que no sean un color hex válido.
 
+## Escenario: campo `tema_escenario`
+
+Capa inline del nivel Escenario de la herencia (doc técnico 5.4, tercer
+eslabón de la cascada Tema → Plantilla → Escenario → Elemento). Objeto
+de claves planas `string → string` con el mismo esquema que un tema
+(`texto.color`, `fondo.tipo`, ...; ver `themes.md`); `null` o ausente =
+capa vacía. Semántica al resolver:
+
+- Se aplica **encima** de la plantilla (`escenario.tema`) y **debajo**
+  del override del elemento: lo que el operador fija aquí gana a la
+  plantilla para TODO el escenario.
+- El campo `fondo` se pliega en esta misma capa como
+  `fondo.tipo=solido` + `fondo.color1`; si el bolso inline define
+  `fondo.tipo` o `fondo.color1`, **gana el bolso** (lo explícito manda).
+- Reglas de parseo estricto: no-objeto o propiedad no-string → error
+  explícito de carga (no silencioso). `Validar()` comprueba en frío que
+  `texto.color`, `fondo.color1` y `fondo.color2` sean hex válidos.
+- Claves desconocidas se conservan (tolerancia hacia adelante) y entran
+  al informe de fidelidad si cambian algo.
+
+```json
+{
+  "id": "esc-002",
+  "nombre": "Oración",
+  "tema": "DominicalCálido",
+  "fondo": "#101828",
+  "tema_escenario": { "texto.color": "#DDDDDD", "texto.tamano": "72" },
+  "elementos": []
+}
+```
+
 ## Tipos de elemento
 
 ### `texto`

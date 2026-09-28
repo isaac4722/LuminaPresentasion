@@ -1,4 +1,4 @@
-# Temas y herencia (4 niveles)
+# Temas y herencia (5 niveles)
 
 Esquema de un tema y algoritmo de resolución. Complementa
 `format_ahp_v1.md`, sección "Temas y herencia".
@@ -55,25 +55,44 @@ Reglas de validación (parsing estricto):
 2. Cada tema debe ser un objeto; cada propiedad, un string.
 3. Un tema puede definir un subconjunto de claves (tema parcial).
 
-## 3. Los 4 niveles
+## 3. Los 5 niveles
 
-| Nivel | Origen                         | Referencia                        |
-|-------|--------------------------------|-----------------------------------|
-| 1     | Tema raíz del programa         | `meta.tema_raiz` (ahp.v1)         |
-| 2     | Plantilla del escenario        | `escenario.tema` (ahp.v1)         |
-| 3     | Tema override del elemento     | `elemento.tema_override` (ahp.v1) |
-| 4     | Tema runtime del operador      | `Sesion.tema_runtime` (session.json) |
+Cascada del doc técnico 5.4 (Tema → Plantilla de Escenario → Escenario →
+Elemento) más el nivel runtime como extensión propia (desviación
+aceptada: el "en caliente" estilo Holyrics [HOLY] es un requisito P0
+del producto; el doc 5.4 lo cubre con el motor en vivo, aquí además
+queda persistido en `session.json`).
 
-Los niveles 1–3 se resuelven **por nombre** contra la biblioteca de temas.
-El nivel 4 es un bolso de propiedades que el operador aplica en caliente
-(cambiar color de fondo "ahora", subir tamaño, etc.), no un tema nombrado.
+| Nivel | Nombre       | Origen                                          | Referencia                          |
+|-------|--------------|--------------------------------------------------|-------------------------------------|
+| 1     | Raíz         | Tema raíz del programa                           | `meta.tema_raiz` (ahp.v1)           |
+| 2     | Plantilla    | Plantilla del escenario                          | `escenario.tema` (ahp.v1)           |
+| 3     | Escenario    | Capa inline del escenario (fondo + tema_escenario) | `escenario.fondo` + `escenario.tema_escenario` (ahp.v1) |
+| 4     | Elemento     | Tema override del elemento                       | `elemento.tema_override` (ahp.v1)   |
+| 5     | Runtime      | Tema runtime del operador                        | `Sesion.tema_runtime` (session.json) |
+
+Los niveles 1, 2 y 4 se resuelven **por nombre** contra la biblioteca de
+temas. El nivel 3 es un bolso inline construido con
+`CapaEscenario(fondo, tema_escenario)`: el color sólido `fondo` se pliega
+como `fondo.tipo=solido` + `fondo.color1` (destino del "fondo del diseño"
+al importar PPTX, doc 9.2.6) y las claves del bolso `tema_escenario`
+ganan sobre el plegado (lo explícito manda; ambas fuentes viven en el
+MISMO nivel, así que pisa el plegado sin registrar entradas extra en el
+informe). El nivel 5 es un bolso de propiedades que el operador aplica
+en caliente (cambiar color de fondo "ahora", subir tamaño, etc.), no un
+tema nombrado.
+
+El nivel Escenario es lo que el operador fija para TODO el escenario por
+encima de su plantilla: es el tercer eslabón de la cascada del doc 5.4
+y el equivalente del nivel "Diseño" de PresentationML en la traducción
+del exportador PPTX (9.3).
 
 ## 4. Algoritmo de resolución
 
-`fusion::core::HerenciaTemas::Resolver(raiz, escenario, elemento, runtime)`:
+`fusion::core::HerenciaTemas::Resolver(raiz, plantilla, escenario, elemento, runtime)`:
 
 1. Empezar con un bolso vacío.
-2. Recorrer los niveles en orden 1 → 4 (prioridad creciente).
+2. Recorrer los niveles en orden 1 → 5 (prioridad creciente).
 3. Por cada propiedad de la capa:
    - Si la clave **no existía**: se añade y entra al informe con
      `valor_anterior = ""`.
@@ -105,6 +124,7 @@ un elemento se ve como se ve.
 ## 6. Tests
 
 - Nativos: `tests/native/test_herencia.cpp`
-  (prioridad, informe, valores inválidos, biblioteca, integración ahp.v1).
+  (prioridad 5 niveles, informe, plegado de CapaEscenario, valores
+  inválidos, biblioteca, integración ahp.v1).
 - La resolución es portable (sin API de Windows) para poder correr los
   tests en cualquier plataforma además de MSVC.

@@ -111,6 +111,29 @@ bool AhpFormat::CargarFromString(const std::string& json_text, Programa* out,
         esc.notas  = ej.value("notas", "");
         esc.tema   = ej.value("tema", "");
         esc.fondo  = ej.value("fondo", "");
+        // Capa inline del nivel Escenario (doc 5.4): objeto de claves
+        // planas string→string (o null/ausente = vacía). Un tipo erróneo
+        // en una clave CONOCIDA del formato es error explícito, no
+        // silencioso (misma política que la versión futura).
+        if (ej.contains("tema_escenario") && !ej["tema_escenario"].is_null()) {
+            const auto& te = ej["tema_escenario"];
+            if (!te.is_object()) {
+                if (msg_error)
+                    *msg_error = "Escenario con 'tema_escenario' que no es "
+                                 "objeto: " + ej.value("nombre", "");
+                return false;
+            }
+            for (auto it = te.begin(); it != te.end(); ++it) {
+                if (!it.value().is_string()) {
+                    if (msg_error)
+                        *msg_error = "Escenario con propiedad no-string en "
+                                     "'tema_escenario'." + it.key() + ": " +
+                                     ej.value("nombre", "");
+                    return false;
+                }
+                esc.tema_escenario[it.key()] = it.value().get<std::string>();
+            }
+        }
         const auto elementos = ej.value("elementos", nlohmann::json::array());
         for (const auto& elj : elementos) {
             Elemento e;
@@ -178,6 +201,7 @@ std::string AhpFormat::Serializar(const Programa& p) {
             {"notas", e.notas}, {"tema", e.tema}
         };
         if (!e.fondo.empty()) ej["fondo"] = e.fondo;
+        if (!e.tema_escenario.empty()) ej["tema_escenario"] = e.tema_escenario;
         nlohmann::json elems = nlohmann::json::array();
         for (const auto& el : e.elementos) {
             nlohmann::json elj = {{"id", el.id}, {"titulo", el.titulo}};
@@ -263,6 +287,25 @@ bool AhpFormat::Validar(const Programa& p, std::string* msg_error) {
                              "#RGB o #RRGGBB): " + e.nombre;
             }
             return false;
+        }
+        // Capa inline tema_escenario: los valores de claves de color
+        // conocidas deben ser hex válidos (los errores de render en
+        // caliente ya se toleran, pero un archivo mal formado se
+        // detecta en frío, antes de proyectar).
+        static const char* kClavesHex[] = {
+            "texto.color", "fondo.color1", "fondo.color2",
+        };
+        for (const auto& [clave, valor] : e.tema_escenario) {
+            for (const char* hex : kClavesHex) {
+                if (clave == hex && !EsColorHexValido(valor)) {
+                    if (msg_error) {
+                        *msg_error = "Escenario con valor inválido en "
+                                     "tema_escenario (use #RGB o #RRGGBB): "
+                                     + clave + " en " + e.nombre;
+                    }
+                    return false;
+                }
+            }
         }
         std::vector<std::string> el_ids;
         for (const auto& el : e.elementos) {

@@ -208,3 +208,81 @@ TEST_CASE("AhpFormat: fondo con color invalido se rechaza en Validar") {
     err.clear();
     CHECK(AhpFormat::Validar(p2, &err));
 }
+
+TEST_CASE("AhpFormat: tema_escenario del Escenario (doc 5.4) redondea") {
+    // JSON → modelo.
+    const std::string json = R"({
+        "formato":"ahp","version":1,
+        "meta":{"titulo":"Culto"},
+        "escenarios":[{
+            "id":"esc-1","nombre":"Oración","tema":"Plantilla",
+            "fondo":"#101828",
+            "tema_escenario":{"texto.color":"#DDDDDD","fondo.ajuste":"cubrir"},
+            "elementos":[]
+        }]
+    })";
+    Programa p;
+    std::string err;
+    REQUIRE(AhpFormat::CargarFromString(json, &p, &err));
+    REQUIRE(p.escenarios[0].tema_escenario.size() == 2);
+    CHECK(p.escenarios[0].tema_escenario.at("texto.color") == "#DDDDDD");
+    CHECK(p.escenarios[0].tema_escenario.at("fondo.ajuste") == "cubrir");
+
+    // Modelo → JSON → modelo (ida y vuelta).
+    const std::string s = AhpFormat::Serializar(p);
+    REQUIRE(s.find("tema_escenario") != std::string::npos);
+    Programa p2;
+    REQUIRE(AhpFormat::CargarFromString(s, &p2, &err));
+    REQUIRE(p2.escenarios[0].tema_escenario.size() == 2);
+    CHECK(p2.escenarios[0].tema_escenario.at("texto.color") == "#DDDDDD");
+
+    // "tema_escenario": null se tolera como capa vacía (tolerancia con
+    // archivos generados por otros editores).
+    const std::string con_null = R"({
+        "formato":"ahp","version":1,"meta":{},
+        "escenarios":[{"id":"e","nombre":"N","tema_escenario":null,"elementos":[]}]
+    })";
+    Programa p3;
+    REQUIRE(AhpFormat::CargarFromString(con_null, &p3, &err));
+    CHECK(p3.escenarios[0].tema_escenario.empty());
+}
+
+TEST_CASE("AhpFormat: tema_escenario mal formado falla con error explícito") {
+    std::string err;
+    // No es objeto.
+    const std::string no_obj = R"({
+        "formato":"ahp","version":1,"meta":{},
+        "escenarios":[{"id":"e","nombre":"N","tema_escenario":[1,2],"elementos":[]}]
+    })";
+    Programa p;
+    CHECK_FALSE(AhpFormat::CargarFromString(no_obj, &p, &err));
+    CHECK(err.find("tema_escenario") != std::string::npos);
+
+    // Propiedad no-string.
+    const std::string no_string = R"({
+        "formato":"ahp","version":1,"meta":{},
+        "escenarios":[{"id":"e","nombre":"N",
+            "tema_escenario":{"texto.tamano":60},"elementos":[]}]
+    })";
+    Programa p2;
+    CHECK_FALSE(AhpFormat::CargarFromString(no_string, &p2, &err));
+    CHECK(err.find("texto.tamano") != std::string::npos);
+}
+
+TEST_CASE("AhpFormat: color inválido en tema_escenario se rechaza en Validar") {
+    Programa p;
+    Escenario e; e.id = "esc-1"; e.nombre = "E";
+    e.tema_escenario["texto.color"] = "#ZZZZZZ";
+    p.escenarios.push_back(e);
+    std::string err;
+    CHECK_FALSE(AhpFormat::Validar(p, &err));
+    CHECK(err.find("tema_escenario") != std::string::npos);
+
+    // Claves desconocidas NO se validan como color (tolerancia hacia
+    // adelante): solo texto.color, fondo.color1 y fondo.color2.
+    Escenario e2; e2.id = "esc-2"; e2.nombre = "E2";
+    e2.tema_escenario["clave.futura"] = "valor-libre";
+    Programa p2; p2.escenarios.push_back(e2);
+    err.clear();
+    CHECK(AhpFormat::Validar(p2, &err));
+}

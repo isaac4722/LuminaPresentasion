@@ -175,10 +175,11 @@ bool AplicarPropiedadFondo(const std::string& clave, const std::string& valor,
 // ---------------------------------------------------------------------------
 const char* NombreNivel(NivelTema n) {
     switch (n) {
-        case NivelTema::Raiz:     return "raiz";
+        case NivelTema::Raiz:      return "raiz";
+        case NivelTema::Plantilla: return "plantilla";
         case NivelTema::Escenario: return "escenario";
-        case NivelTema::Elemento: return "elemento";
-        case NivelTema::Runtime:  return "runtime";
+        case NivelTema::Elemento:  return "elemento";
+        case NivelTema::Runtime:   return "runtime";
     }
     return "?";
 }
@@ -189,14 +190,16 @@ const std::string* ResolucionTema::Buscar(const std::string& clave) const {
 }
 
 ResolucionTema HerenciaTemas::Resolver(const CapaTema* raiz,
+                                       const CapaTema* plantilla,
                                        const CapaTema* escenario,
                                        const CapaTema* elemento,
                                        const CapaTema* runtime) {
     const std::pair<NivelTema, const CapaTema*> niveles[] = {
-        { NivelTema::Raiz,     raiz },
+        { NivelTema::Raiz,      raiz },
+        { NivelTema::Plantilla, plantilla },
         { NivelTema::Escenario, escenario },
-        { NivelTema::Elemento, elemento },
-        { NivelTema::Runtime,  runtime },
+        { NivelTema::Elemento,  elemento },
+        { NivelTema::Runtime,   runtime },
     };
 
     ResolucionTema r;
@@ -219,6 +222,24 @@ ResolucionTema HerenciaTemas::Resolver(const CapaTema* raiz,
         }
     }
     return r;
+}
+
+CapaTema CapaEscenario(const std::string& fondo_hex,
+                       const CapaTema& tema_escenario_inline) {
+    CapaTema capa;
+    if (!fondo_hex.empty()) {
+        // Plegado del color sólido del escenario (doc 9.2.6: destino del
+        // "fondo del diseño" al importar PPTX).
+        capa["fondo.tipo"]   = "solido";
+        capa["fondo.color1"] = fondo_hex;
+    }
+    // El bolso inline gana sobre el plegado (lo explícito manda): como
+    // ambos viven en el MISMO nivel, sobreescribir aquí no genera
+    // registros extra en el informe de fidelidad.
+    for (const auto& [clave, valor] : tema_escenario_inline) {
+        capa[clave] = valor;
+    }
+    return capa;
 }
 
 // ---------------------------------------------------------------------------

@@ -7,6 +7,8 @@
 #include "fusion/Version.h"
 // AjusteImagen se define en fusion/core/Renderer.h y se reutiliza aquí.
 #include "fusion/core/Renderer.h"
+// CapaTema (bolso de claves planas) para la capa del Escenario (doc 5.4).
+#include "fusion/core/HerenciaTemas.h"
 
 #include <string>
 #include <vector>
@@ -81,6 +83,12 @@ struct Escenario {
     std::string fondo;   // color sólido del escenario ("#RRGGBB"/"#RGB")
                          // o vacío = hereda del tema. Destino del "fondo
                          // del diseño" al importar PPTX (doc 9.2.6).
+    // Capa inline del nivel Escenario (doc 5.4, tercer eslabón de la
+    // cascada Tema → Plantilla → Escenario → Elemento): bolso de claves
+    // planas que sobreescribe selectivamente a la plantilla; las claves
+    // de aquí ganan sobre el plegado de `fondo`. Vacío = el nivel solo
+    // participa si `fondo` está definido.
+    CapaTema tema_escenario;
     std::vector<Elemento> elementos;
 };
 
