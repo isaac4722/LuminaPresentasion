@@ -18,6 +18,7 @@
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
 #include <windows.h>
+#include <shellapi.h>   // ShellExecuteExW (instalador offline de .NET)
 
 #include <string>
 #include <vector>
@@ -67,7 +68,7 @@ void RegistrarLinea(const std::wstring& linea) {
     WriteFile(h, sello, static_cast<DWORD>(wcslen(sello) * sizeof(wchar_t)),
               &escritos, nullptr);
     WriteFile(h, linea.c_str(),
-              static_cast<DWORD>(wcslen(linea) * sizeof(wchar_t)),
+              static_cast<DWORD>(linea.size() * sizeof(wchar_t)),
               &escritos, nullptr);
     WriteFile(h, L"\r\n", 2 * sizeof(wchar_t), &escritos, nullptr);
     CloseHandle(h);

@@ -219,14 +219,19 @@ jobs:
         run: |
           $plataforma = if ("${{ matrix.arquitectura }}" -eq "x86") { "x86" } else { "x64" }
           $build = "src\qt-shell\build-${{ matrix.arquitectura }}"
-          $crt = Get-ChildItem -Path "$env:VCINSTALLDIR\Redist\MSVC" -Recurse -Filter "msvcp140.dll" -ErrorAction Stop |
-                 Where-Object { $_.FullName -match "\\$plataforma\\Microsoft\.VC.+\.CRT$" } |
+          $raiz = Join-Path $env:VCINSTALLDIR "Redist\MSVC"
+          # Buscar la carpeta del CRT (el FullName del archivo termina en
+          # msvcp140.dll: hay que casar la CARPETA, no el final de la ruta).
+          $crt = Get-ChildItem -Path $raiz -Recurse -Directory -Filter "Microsoft.VC*.CRT" -ErrorAction Stop |
+                 Where-Object { $_.FullName -match "\\$plataforma\\" } |
                  Sort-Object FullName | Select-Object -Last 1
           if (-not $crt) {
-            Write-Host "##[error]No se halló el redist VC++ para $plataforma bajo $env:VCINSTALLDIR\Redist\MSVC"
+            Write-Host "##[error]No se halló el redist VC++ para $plataforma bajo $raiz"
+            Get-ChildItem -Path $raiz -Recurse -Directory -ErrorAction SilentlyContinue |
+              Select-Object -First 20 -ExpandProperty FullName
             exit 1
           }
-          $dir = Split-Path -Parent $crt.FullName
+          $dir = $crt.FullName
           foreach ($dll in @("msvcp140.dll", "vcruntime140.dll", "vcruntime140_1.dll")) {
             $origen = Join-Path $dir $dll
             if (Test-Path $origen) { Copy-Item $origen $build -Force }
