@@ -11,9 +11,12 @@
 // si el launcher muere, el núcleo y la consola mueren con él; cuando la
 // consola gestionada se cierra, el launcher corta el núcleo y sale.
 //
-// Diagnóstico: cada paso se registra en runtime\arranque.log y, si no
-// pudo abrirse NINGUNA interfaz, se muestra un aviso con la causa
-// (nunca un cierre silencioso).
+// Diagnóstico: cada paso se registra en runtime\arranque.log (en la raíz
+// de datos ESCRIBIBLE: junto al exe si es portable; %LOCALAPPDATA%\FUSION-HP
+// si está instalado en Program Files) y, si no pudo abrirse NINGUNA
+// interfaz, se muestra un aviso con la causa (nunca un cierre silencioso).
+// Además, el arranque VERIFICA que FusionCore.exe sigue vivo y que el
+// pipe IPC apareció: "arrancado" ya no se registra sin haber comprobado.
 
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
@@ -42,7 +45,35 @@ std::wstring ExeDir() {
     return (pos != std::wstring::npos) ? p.substr(0, pos) : L".";
 }
 
-std::wstring RuntimeDir() { return ExeDir() + L"\\runtime"; }
+// Raíz de datos escribibles, MISMA política que el núcleo (Rutas.cpp):
+// carpeta del exe si se puede escribir; si no, %LOCALAPPDATA%\FUSION-HP
+// (instalado en Program Files: sin esto ni siquiera el arranque.log se
+// podía escribir).
+std::wstring RaizDatos() {
+    static std::wstring raiz = [] {
+        std::wstring exe = ExeDir();
+        std::wstring prueba = exe + L"\\fusion_escritura.prueba";
+        HANDLE h = CreateFileW(prueba.c_str(), GENERIC_WRITE, 0, nullptr,
+                               CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+        if (h != INVALID_HANDLE_VALUE) {
+            CloseHandle(h);
+            DeleteFileW(prueba.c_str());
+            return exe;   // portable de verdad
+        }
+        wchar_t buf[MAX_PATH] = {0};
+        DWORD n = GetEnvironmentVariableW(L"LOCALAPPDATA", buf, MAX_PATH);
+        if (n > 0 && n < MAX_PATH) {
+            std::wstring dir = buf + (L"\\FUSION-HP");
+            CreateDirectoryW(dir.c_str(), nullptr);
+            CreateDirectoryW((dir + L"\\runtime").c_str(), nullptr);
+            return dir;
+        }
+        return exe;   // último recurso
+    }();
+    return raiz;
+}
+
+std::wstring RuntimeDir() { return RaizDatos() + L"\\runtime"; }
 
 bool ArchivoExiste(const std::wstring& p) {
     DWORD a = GetFileAttributesW(p.c_str());
@@ -214,11 +245,35 @@ int APIENTRY wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
         if (ArchivoExiste(ruta)) {
             hNucleo = ArrancarEnJob(ruta, ExeDir(), hJob, true, &rc);
         }
-        RegistrarLinea(hNucleo ? L"FusionCore.exe arrancado (oculto)"
-                               : (L"FusionCore.exe no arrancó: " +
-                                  (ArchivoExiste(ruta)
-                                       ? MensajeError(rc)
-                                       : L"no se encontró FusionCore.exe")));
+        if (!hNucleo) {
+            RegistrarLinea(L"FusionCore.exe no arrancó: " +
+                           (ArchivoExiste(ruta)
+                                ? MensajeError(rc)
+                                : L"no se encontró FusionCore.exe"));
+        } else {
+            // Verificar que SIGUE vivo (antes se registraba "arrancado" y
+            // podía morir al segundo sin dejar rastro: el "no abre Core").
+            DWORD espera = WaitForSingleObject(hNucleo, 2500);
+            if (espera == WAIT_OBJECT_0) {
+                DWORD codigo = 0;
+                GetExitCodeProcess(hNucleo, &codigo);
+                wchar_t m[128];
+                swprintf_s(m, 128,
+                           L"FusionCore.exe MURIÓ al arrancar (código %u): "
+                           L"ver runtime\\nucleo.log",
+                           codigo);
+                RegistrarLinea(m);
+            } else {
+                RegistrarLinea(L"FusionCore.exe vivo tras 2,5 s");
+            }
+            // El pipe IPC del núcleo debe existir (cliente de la consola).
+            if (WaitNamedPipeW(L"\\\\.\\pipe\\FusionHP-ipc", 3000)) {
+                RegistrarLinea(L"pipe IPC \\\\.\\pipe\\FusionHP-ipc listo");
+            } else {
+                RegistrarLinea(L"AVISO: el pipe IPC no respondió a tiempo "
+                               L"(el núcleo puede seguir arrancando)");
+            }
+        }
     }
 
     // 4. Consola gestionada (WinForms). Ruta correcta del paquete:
@@ -265,7 +320,9 @@ int APIENTRY wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
             L"  FusionCore.exe (núcleo)\r\n"
             L"  gestionado\\FusionHP.Managed.exe (consola, requiere .NET 4.8)\r\n"
             L"  qt\\FusionQtShell.exe (shell de escritorio)\r\n\r\n"
-            L"El detalle del arranque quedó en runtime\\arranque.log",
+            L"El detalle del arranque quedó en runtime\\arranque.log "
+            L"(junto al programa, o en %LOCALAPPDATA%\\FUSION-HP\\runtime "
+            L"si está instalado en Archivos de programa).",
             L"FUSION-HP — No se pudo abrir",
             MB_OK | MB_ICONERROR);
     }
