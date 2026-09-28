@@ -512,3 +512,87 @@ Adenda de la sesión IX — publicación:
   x64.zip (15,8 MB), FusionHP-Setup-x86.exe (11,6 MB) y
   FusionHP-Setup-x64.exe (13,1 MB).
 - https://github.com/isaac4722/LuminaPresentasion/releases/tag/v0.9.1
+
+## Sesión X — arranque que abre, fidelidad v2 del modo directo (runs + imágenes) y shell en vivo
+
+Instrucción del propietario: "Continua, y que no haya errores, Usa
+librerías o dependencias que ayuden al proyecto. Y evita que no se
+carguen (ahora no abre). Y que todo lo que falte lo implementes en esta
+tanda."
+
+### Pieza 1 — fix(lanzador) 3f2c977: la causa del "no abre"
+
+Tres causas raíz, las tres corregidas:
+
+1. El launcher buscaba `managed\FusionHP.Managed.exe` pero el paquete
+   instala la consola en `gestionado\` (LEEME e instalador la anuncian
+   ahí): la consola JAMÁS arrancaba. Ahora `gestionado\` (con
+   `managed\` como legado).
+2. El Job Object con KILL_ON_JOB_CLOSE mataba FusionCore.exe al
+   instante: el launcher hacía `return 0` y al cerrar el launcher se
+   cerraba el último handle del job. Ahora el launcher permanece vivo
+   (sin ventana) hasta que la interfaz termina; al cerrarla corta el
+   árbol completo (nada colgado, nada muerto antes de tiempo).
+3. Si la consola no puede abrirse (falta .NET 4.8 o archivos), se abre
+   el shell Qt como alternativa de escritorio; y si nada puede abrirse,
+   MessageBox con la causa. Nunca un cierre silencioso.
+
+Extra: instancia única (mutex `FusionHP-Launcher-Running`) y bitácora
+`runtime\arranque.log` con cada paso y su código de error (sin Registro).
+
+### Pieza 2 — fix(paquete) 4d5c3dc: runtime VC++ app-local para las DLL de Qt
+
+Las DLL oficiales de Qt 5.15.2 (msvc2019) enlazan el runtime VC++
+DINÁMICO (msvcp140/vcruntime140). El windeployqt se hacía con
+--no-compiler-runtime: en equipos sin el VC redist, FusionQtShell.exe
+tampoco abría ("VCRUNTIME140.dll no encontrado"). El CI copia ahora
+msvcp140/vcruntime140(+140_1 x64) del redist de VS junto al exe
+(d espliegue app-local oficial) y empaquetar.ps1 verifica su presencia.
+
+### Pieza 3 — feat(pptx) e43fbe4: lector v2 (runs + imágenes) con pugixml y stb_image
+
+- Vendidas: pugixml 1.14 (MIT) y stb_image 2.30 (dominio público),
+  auditables en third_party/ (sin descargas en runtime; 100% offline).
+- Modelo: EstructuraRun (sz/b/i/u/color), ParrafoPptx, ImagenPptx
+  (xfrm EMU + RGBA decodificada), DiapositivaPptx.parrafos_ricos/
+  imagenes; `parrafos` plano intacto (compat v1).
+- Bugs reales hallados en verificación y corregidos: (a) `Attr(n,"id")`
+  devolvía el id numérico plano de p:sldId en vez de r:id → paquete
+  con 0 diapositivas; ahora se prefiere el atributo namespaced;
+  (b) tabla en p:graphic/a:graphicData/a:tbl (no colgando de p:graphic);
+  (c) p:ph buscado en profundidad dentro de p:nvSpPr.
+- Avisos explícitos en todas las vías (p:pic sin r:embed, relación
+  inexistente, media ausente, media no decodificable, XML roto).
+- Tests: 11 casos nuevos con paquetes sintéticos (ZIP almacenado,
+  PNG 2x2 real embebido).
+
+### Pieza 4 — feat(render) 8834124: plan v2 (estilos por-run + imágenes)
+
+- PasoDibujo::Tipo::Imagen + PlanRenderDirecto.imagenes; las p:pic se
+  normalizan por p:sldSz y se dibujan ANTES del texto. DibujarPlan y
+  RasterizadorDirectoD2D por la MISMA rutina (DibujarImagenMemoriaEnRT:
+  RGBA → PBGRA → ID2D1Bitmap).
+- Estilo del primer run con estilo explícito manda en su párrafo;
+  sz en pt → px de referencia 13716000/alto_emu (40 pt = 80 px a
+  1080p en 7.5"); mezcla de estilos → aviso (nada silencioso).
+- Renderer::DibujarImagenMemoria con impl. por defecto no-op;
+  RendererDirect2D la pinta. Color::DesdeHex movida a la parte portable.
+- Tests: 8 casos nuevos.
+
+### Pieza 5 — feat(shell) 48b86b8: shell Qt con vista en vivo
+
+El shell Qt compila las fuentes portable del núcleo (PptxDirecto,
+RenderDirecto, HerenciaTemas, pugixml) y muestra el paquete con el
+mismo rasterizador D2D offscreen: Abrir PPTX (QFile, rutas Unicode) →
+LeerDesdeMemoria → ConstruirPlan (EMU del paquete) → Rasterizar 1280x720
+→ QImage → QLabel. Lista con títulos, navegación y avisos en la barra
+de estado. No necesita .NET ni IPC: es la alternativa de escritorio
+del launcher cuando falta .NET 4.8.
+
+### Verificación y estado
+
+- Suite local gcc-14: 136 casos / 1116 aserciones VERDE (0 avisos
+  -Wall -Wextra). CI: runs de las 5 piezas en verde (ver adenda).
+- Pendiente para próximas sesiones: net35 dual-target (la capa
+  compartida sigue en WinForms), subrayado por-run en el pintado D2D,
+  formas vectoriales (prstGeom/custGeom) del pptx.

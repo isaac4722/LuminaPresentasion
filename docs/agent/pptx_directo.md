@@ -9,9 +9,13 @@ shell Windows la consume para rasterizar cada diapositiva.
 
 - **Leer no ejecuta nada.** Un `.pptm` se lee igual que un `.pptx`; las
   macros jamás se ejecutan (regla del producto, refuerza a PlanPptx).
-- **Sin dependencias nuevas.** El lector ZIP, el inflador RFC 1951 y el
-  mini-extractor XML son propios (~900 líneas). Nada que auditar de
-  terceros ni licencias que añadir.
+- **Dependencias vendidas y auditables.** El lector ZIP y el inflador
+  RFC 1951 siguen siendo propios (verificados con paquete embebido y
+  CRC). El parseo XML usa **pugixml 1.14** (MIT, vendida en
+  `third_party/pugixml`, sin excepciones/STL/XPath) y la media del
+  paquete se decodifica con **stb_image 2.30** (dominio público, vendida
+  en `third_party/stb`; PNG/JPEG/BMP/GIF → RGBA, límite 64 Mp por
+  imagen). Nada se descarga en runtime (regla 100% offline).
 - **Errores explícitos, sin retroceso silencioso**: paquete no-zip,
   directorio central roto, CRC32 que no coincide, deflate corrupto,
   sin `officeDocument`, parte de presentación ausente → `ok=false` con
@@ -21,7 +25,36 @@ shell Windows la consume para rasterizar cada diapositiva.
   diapositiva falta o está rota, se omite con aviso y el índice de las
   restantes conserva la posición original de la lista.
 
-## Qué extrae (v1)
+## Qué extrae (v2)
+
+Por paquete: `p:sldSz` en EMU (`ancho_emu`/`alto_emu`, 914400 EMU = 1")
+para la relación de aspecto del render.
+
+Por diapositiva, en orden de presentación:
+
+| Campo            | Origen |
+|------------------|--------|
+| `titulo`         | Placeholder `type="title"`/`"ctrTitle"` (runs unidos con espacio) |
+| `parrafos`       | Texto plano de cada párrafo rico (compatibilidad v1) |
+| `parrafos_ricos` | `a:p` → `a:r` con `a:rPr`: `sz` (centésimas de punto → `tam_pt`), `b`, `i`, `u`, color `a:solidFill/a:srgbClr@val` → `#RRGGBB` |
+| `imagenes`       | `p:pic`: `a:xfrm` (off/ext EMU) + `a:blip@r:embed` → relaciones de la diapositiva → parte media decodificada a RGBA (`ancho`/`alto`/`rgba`, `parte` = ruta en el paquete) |
+
+- Los atributos de relación (`r:id`, `r:embed`) se buscan **prefiriendo
+  el namespaced**: `p:sldId` lleva también un `id` plano (número interno)
+  que NO es la relación (bug real hallado en verificación).
+- Los nodos se comparan por **nombre local** (`p:sp` ≡ `<x:sp>`): los
+  prefijos legales distintos de p:/a:/r: se aceptan.
+- La tabla vive en `p:graphic/a:graphicData/a:tbl` (búsqueda en
+  profundidad acotada al marco); `p:ph` se busca en profundidad dentro
+  de `p:nvSpPr`.
+- Avisos explícitos (nada silencioso): `p:pic` sin `r:embed`,
+  relación inexistente, media ausente, media no decodificable, XML de
+  diapositiva roto.
+- Límite antizip-bomb del lector ZIP intacto; la media decodificada se
+  acota a 64 Mp (256 MiB de RGBA) por imagen.
+- Leer no ejecuta nada (regla `.pptm` intacta).
+
+## Qué extraía (v1, histórico)
 
 Por paquete: `p:sldSz` en EMU (`ancho_emu`/`alto_emu`, 914400 EMU = 1")
 para la relación de aspecto del render.

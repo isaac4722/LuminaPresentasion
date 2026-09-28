@@ -132,3 +132,21 @@ recorte; el pincel final lo pone DirectWrite con métricas reales.
   seguros.
 - La parte D2D (`RasterizadorDirectoD2D`, rutinas `*EnRT`) solo compila
   en MSVC (CI: núcleo x86/x64 + qt_shell).
+
+
+## v2 — estilos por-run e imágenes internas
+
+- `PasoDibujo::Tipo::Imagen` + `PlanRenderDirecto.imagenes` (RGBA recto
+  ya decodificado por el lector). `imagen_idx` referencia el índice; el
+  paso se renormaliza como los de texto (letterbox incluido).
+- `OpcionesRenderDirecto.ancho_emu/alto_emu` (p:sldSz del paquete):
+  sin ellos, las imágenes se omiten con aviso. Imagen sin `a:xfrm`
+  → aviso y omitida.
+- `Renderer::DibujarImagenMemoria(rgba, w, h, rect)` con impl. por
+  defecto no-op; `RendererDirect2D` y `RasterizadorDirectoD2D` pintan
+  por la MISMA rutina compartida (`DibujarImagenMemoriaEnRT`):
+  RGBA recto → PBGRA premultiplicada → ID2D1Bitmap → DrawBitmap.
+- `Color::DesdeHex` vive en la parte portable de RenderDirecto.cpp
+  (también la necesitan los colores por-run).
+- El shell Qt compila las fuentes portable del núcleo y muestra el
+  paquete con el mismo rasterizador (vista en vivo, sin .NET ni IPC).
