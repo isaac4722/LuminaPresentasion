@@ -20,6 +20,7 @@ con `AGENT.md`, este último prevalece.
 | `import_pptx.md`       | Importador PPTX → ahp.v1 (capa C#).                      |
 | `exportadores.md`      | Exportadores reales del núcleo (pptx/pdf/png).           |
 | `paquetes.md`          | Portable dual e instaladores en CI.                      |
+| `dependencias.md`      | Auditoría de librerías/recursos y reglas para añadir.    |
 
 ## Cómo usar estos documentos
 

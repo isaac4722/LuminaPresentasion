@@ -168,6 +168,7 @@ estos son eventos que el cliente debe manejar (suscripción). Tienen
 
 | Código              | Significado                                     |
 |---------------------|-------------------------------------------------|
+| `E_CARGANDO`        | El pipe existe pero el motor aún carga (arranque en dos fases: el núcleo crea el IPC antes de abrir BDs/siembra la biblia). El cliente debe reintentar el mismo comando; los clientes oficiales reintentan automáticamente hasta ~90 s. |
 | `E_BAD_PAYLOAD`     | Payload malformado o falta de campos            |
 | `E_NO_PROGRAM`      | No hay programa cargado                         |
 | `E_NOT_FOUND`       | Recurso no encontrado (escenario, elemento...)   |
