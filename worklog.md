@@ -707,3 +707,49 @@ Adenda de la sesión XI — CI y publicación:
 - Suite final: 162 casos / 1247 aserciones (gcc-14, 0 avisos) + 17 tests
   gestionados C# + doble arquitectura MSVC + gate + portable +
   instaladores.
+
+## Sesión XII — "No se puede conectar con el Core" resuelto de raíz a raíz
+
+Reporte del propietario: "Nada, Dice que no se puede conectar con el
+Core". La consola mostraba "No se pudo conectar al núcleo" incluso con la
+v0.9.3. Diagnóstico desde el código, tres defectos en cadena:
+
+1. **El arranque era secuencial en el orden equivocado**: `Engine::Iniciar`
+   (ventana + D2D + BDs + SIEMBRA de la biblia) corría ANTES de crear el
+   servidor IPC. La siembra de la RVR1909 (~31.000 versículos) insertaba
+   UNO POR UNO sin transacción: cada INSERT era una transacción implícita
+   con vuelco a disco → MINUTOS en una máquina real, con el pipe IPC
+   todavía inexistente. La consola se rendía a los ~12 s.
+2. **El launcher arrancaba la consola sin esperar el pipe** (3 s y listo).
+3. **I/O indefinida en el servidor IPC**: ReadFile/WriteFile síncronas
+   sobre un pipe creado con FILE_FLAG_OVERLAPPED (comportamiento indefinido
+   en Windows; puede cortar conexiones al azar).
+
+Piezas (1 pieza = 1 commit, en orden de causa raíz):
+
+- `9856d78` fix(data): una transacción por importación masiva. Guardia RAII
+  `TransaccionImport` (ROLLBACK en cualquier salida temprana) envuelve
+  JsonBible, TsvBible, ZefaniaXml y HolyricsJson. API nueva en
+  BibleDatabase/SongDatabase (Iniciar/Confirmar/DescartarTransaccion,
+  BEGIN IMMEDIATE). MEDIDO: 31.099 versículos en 2,53 s. 4 tests nuevos.
+- `7d6400b` fix(nucleo): arranque en dos fases — el pipe IPC existe en
+  milisegundos; el motor carga después. Mientras carga, todo comando
+  recibe `E_CARGANDO` (documentado en format_ipc_v1.md) con el id
+  repetido; ProcesarIpc solo corre con motor_listo. 2 tests nuevos.
+- `f3b44ad` fix(ipc): IoSolapado — OVERLAPPED + evento, espera troceada
+  cancelable y conteo REAL de bytes con GetOverlappedResult; la escritura
+  verifica el tamaño.
+- `655a4eb` fix(lanzador): espera activa del pipe hasta 90 s (pasos de
+  400 ms, ERROR_PIPE_BUSY = presente), registro de progreso en
+  runtime\arranque.log y la consola SOLO si el núcleo es servible.
+- `b908ad4` fix(gestionada): ConectarPaciente(cancelar) — 40 intentos × 2 s
+  con pausas cancelables + EsperaConexionForm ("Conectando con el núcleo…",
+  progreso marquee, botón Cancelar; la conexión en hilo aparte). 2 tests.
+- `d597b12` docs(dependencias): investigación de componentes/librerías/
+  dependencias/recursos pedida por el propietario — docs/agent/
+  dependencias.md (en uso, evaluadas con veredicto, reglas de aceptación) +
+  THIRD_PARTY_LICENSES.txt alineado al uso real (salen wil, spdlog,
+  Newtonsoft, NLog, PdfSharp, Ookii; entra Qt) + E_CARGANDO en el contrato.
+
+Verificación: suite local gcc-14 168 casos / 1.281 aserciones VERDE
+(-Wall -Wextra, 0 avisos). CI: ver run del push d597b12 (10 jobs).
