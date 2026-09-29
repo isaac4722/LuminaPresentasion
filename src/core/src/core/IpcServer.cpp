@@ -51,6 +51,11 @@ struct EstadoIpc {
     std::vector<std::shared_ptr<ClienteIpc>> clientes;
 };
 
+// Declaración adelantada: EscribirCliente (abajo) la usa y MSVC exige
+// verla declarada antes de la primera llamada.
+bool IoSolapado(HANDLE pipe, void* buf, DWORD tam, bool lectura,
+                std::atomic<bool>* parar, DWORD* transferidos_out = nullptr);
+
 bool EscribirCliente(EstadoIpc& e, const std::shared_ptr<ClienteIpc>& cli,
                      const std::string& datos) {
     std::lock_guard<std::mutex> lk(cli->m_write);
@@ -65,7 +70,7 @@ bool EscribirCliente(EstadoIpc& e, const std::shared_ptr<ClienteIpc>& cli,
 // servidor). `transferidos_out` (opcional) recibe el número REAL de bytes
 // leídos/escritos según GetOverlappedResult.
 bool IoSolapado(HANDLE pipe, void* buf, DWORD tam, bool lectura,
-               std::atomic<bool>* parar, DWORD* transferidos_out = nullptr) {
+                std::atomic<bool>* parar, DWORD* transferidos_out) {
     if (transferidos_out) *transferidos_out = 0;
 
     OVERLAPPED ov = {};
