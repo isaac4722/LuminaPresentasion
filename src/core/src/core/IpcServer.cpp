@@ -55,9 +55,56 @@ bool EscribirCliente(EstadoIpc& e, const std::shared_ptr<ClienteIpc>& cli,
                      const std::string& datos) {
     std::lock_guard<std::mutex> lk(cli->m_write);
     DWORD escritos = 0;
-    return WriteFile(cli->pipe, datos.data(),
-                     static_cast<DWORD>(datos.size()),
-                     &escritos, nullptr) != FALSE;
+    return IoSolapado(cli->pipe, datos.data(),
+                      static_cast<DWORD>(datos.size()),
+                      false /*escritura*/, nullptr, &escritos) &&
+           escritos == datos.size();
+}
+
+// `parar` (opcional): atómico que corta la espera en trozos (parada del
+// servidor). `transferidos_out` (opcional) recibe el número REAL de bytes
+// leídos/escritos según GetOverlappedResult.
+bool IoSolapado(HANDLE pipe, void* buf, DWORD tam, bool lectura,
+               std::atomic<bool>* parar, DWORD* transferidos_out = nullptr) {
+    if (transferidos_out) *transferidos_out = 0;
+
+    OVERLAPPED ov = {};
+    ov.hEvent = CreateEventW(nullptr, TRUE, FALSE, nullptr);
+    if (!ov.hEvent) return false;
+
+    BOOL ok;
+    if (lectura)
+        ok = ReadFile(pipe, buf, tam, nullptr, &ov);
+    else
+        ok = WriteFile(pipe, buf, tam, nullptr, &ov);
+
+    if (!ok && GetLastError() == ERROR_IO_PENDING) {
+        // Espera troceada: permite reaccionar a la parada del servidor.
+        for (;;) {
+            DWORD w = WaitForSingleObject(ov.hEvent, 150);
+            if (w == WAIT_OBJECT_0) { ok = TRUE; break; }
+            if (parar && !parar->load()) {
+                CancelIoEx(pipe, &ov);
+                DWORD dummy = 0;
+                GetOverlappedResult(pipe, &ov, &dummy, TRUE);
+                ok = FALSE;
+                break;
+            }
+            // Sin `parar` (emisión de eventos): seguir esperando; una
+            // escritura de evento no debe quedarse a medias.
+        }
+    }
+
+    DWORD transferidos = 0;
+    if (ok) {
+        // Con solapado, el número de bytes SIEMPRE se lee así, incluso si
+        // la operación completó al primer intento.
+        if (!GetOverlappedResult(pipe, &ov, &transferidos, FALSE))
+            ok = FALSE;
+    }
+    CloseHandle(ov.hEvent);
+    if (transferidos_out) *transferidos_out = transferidos;
+    return ok != FALSE;
 }
 
 // Hilo de atención de una conexión: lee mensajes hasta que el cliente se
@@ -67,9 +114,11 @@ void AtenderConexion(std::shared_ptr<EstadoIpc> e,
     for (;;) {
         std::vector<char> buf(kTamMensaje);
         DWORD leidos = 0;
-        BOOL ok = ReadFile(cli->pipe, buf.data(),
-                           static_cast<DWORD>(buf.size() - 1), &leidos, nullptr);
-        if (!ok || leidos == 0) break;   // cliente desconectado o parada
+        const bool leyo = IoSolapado(cli->pipe, buf.data(),
+                                     static_cast<DWORD>(buf.size() - 1),
+                                     true /*lectura*/, &e->corriendo,
+                                     &leidos);
+        if (!leyo || leidos == 0) break;   // cliente desconectado o parada
 
         RespuestaIpc r;
         {
