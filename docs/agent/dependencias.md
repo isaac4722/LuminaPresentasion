@@ -52,7 +52,7 @@ de verdad (el gate de calidad lo comprueba).
 
 | Candidata       | Para qué serviría                          | Veredicto | Razón |
 |-----------------|---------------------------------------------|-----------|-------|
-| miniz           | Escritor ZIP con deflate (exportar .pptx más pequeño) | **ACEPTADA como candidata P2** | Un solo archivo .c/.h, dominio público; el exportador actual produce entradas ALMACENADAS (OPC válido pero pesado). Integrar SOLO si el tamaño del export importa. |
+| miniz           | Escritor ZIP con deflate (exportar .pptx más pequeño) | **INTEGRADA y probada** | Integrada en src/core/third_party/miniz (3.0.2, MIT) y EN USO en el exportador pptx: entradas método 8 (deflate) en vez de almacenadas, paquetes mucho menores; ida y vuelta cubierta por tests (el lector propio relee y verifica CRC). |
 | zlib            | Compresión general                          | Rechazada | miniz la supera para nuestro único caso; menos piezas vendidas. |
 | expat           | Parser XML SAX                              | Rechazada | pugixml ya cubre DOM y SAX; duplicar parsers es deuda de mantenimiento. |
 | FreeType        | Renderizado de fuentes propio               | Rechazada | DirectWrite ya lo hace con hinting del sistema y menos memoria. |

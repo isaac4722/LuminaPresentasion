@@ -60,12 +60,17 @@ configure_file(
 add_library(fusion_third_party STATIC
     ${FUSION_THIRD_PARTY}/sqlite/sqlite3.c
     ${FUSION_THIRD_PARTY}/pugixml/pugixml.cpp
+    ${FUSION_THIRD_PARTY}/miniz/miniz.c
+    ${FUSION_THIRD_PARTY}/miniz/miniz_tdef.c
+    ${FUSION_THIRD_PARTY}/miniz/miniz_tinfl.c
+    ${FUSION_THIRD_PARTY}/miniz/miniz_zip.c
 )
 target_include_directories(fusion_third_party PUBLIC
     ${FUSION_THIRD_PARTY}
     ${FUSION_THIRD_PARTY}/sqlite
     ${FUSION_THIRD_PARTY}/pugixml
     ${FUSION_THIRD_PARTY}/stb
+    ${FUSION_THIRD_PARTY}/miniz
 )
 # Forzar detección de lenguaje C para el target (sqlite3.c es C, no C++)
 set_target_properties(fusion_third_party PROPERTIES LINKER_LANGUAGE C)

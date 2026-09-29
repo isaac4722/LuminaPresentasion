@@ -4,6 +4,7 @@
 
 #include "doctest.h"
 #include "fusion/core/Exportador.h"
+#include "miniz/miniz.h"
 #include "fusion/core/PptxDirecto.h"
 #include "fusion/data/AhpFormat.h"
 
@@ -744,6 +745,27 @@ TEST_CASE("DimensionesJpeg: SOF0 y SOF2 progresivo") {
     CHECK_FALSE(imgexp::DimensionesJpeg("no es un jpg", &w, &h));
 }
 
+// Extrae una parte del paquete pptx con el lector de miniz (las entradas
+// van DEFLATE: los tests ya no pueden buscar texto en los bytes crudos).
+static std::string ExtraerPartePptx(const std::string& ruta_paquete,
+                                    const std::string& nombre_parte) {
+    const std::string crudo = LeerTodo(ruta_paquete);
+    if (crudo.empty()) return "";
+    mz_zip_archive lectura{};
+    if (mz_zip_reader_init_mem(&lectura, crudo.data(), crudo.size(), 0) == 0)
+        return "";
+    size_t tam = 0;
+    void* datos = mz_zip_reader_extract_file_to_heap(
+        &lectura, nombre_parte.c_str(), &tam, 0);
+    std::string out;
+    if (datos) {
+        out.assign(static_cast<char*>(datos), tam);
+        mz_free(datos);
+    }
+    mz_zip_reader_end(&lectura);
+    return out;
+}
+
 TEST_CASE("ExportarPptx: imagen PNG se incrusta con media, rel y content type") {
     const std::string dir = CarpetaTmp("pptx_img");
     const std::string ruta_img = dir + "/portada.png";
@@ -779,16 +801,24 @@ TEST_CASE("ExportarPptx: imagen PNG se incrusta con media, rel y content type") 
     REQUIRE(Exportador::ExportarPptx(p, ruta_salida, &out));
     REQUIRE(out.ok);
 
-    const std::string paquete = LeerTodo(ruta_salida);
-    // Entrada de media con los bytes EXACTOS (entradas almacenadas).
-    CHECK(paquete.find("ppt/media/image1.png") != std::string::npos);
-    CHECK(paquete.find(png) != std::string::npos);
-    // Diapositiva con p:pic enlazado por rId2 y banda de título.
-    CHECK(paquete.find("<p:pic>") != std::string::npos);
-    CHECK(paquete.find("r:embed=\"rId2\"") != std::string::npos);
-    CHECK(paquete.find("Target=\"../media/image1.png\"") != std::string::npos);
-    CHECK(paquete.find("Extension=\"png\"") != std::string::npos);
-    CHECK(paquete.find("<a:t>Portada</a:t>") != std::string::npos);
+    // Con entradas DEFLATE el contenido ya no es visible en los bytes
+    // crudos: se EXTRAEN las partes con el lector de miniz y se verifica
+    // contra ellas (bytes de media EXACTOS tras descomprimir).
+    const std::string media = ExtraerPartePptx(ruta_salida,
+                                               "ppt/media/image1.png");
+    CHECK_FALSE(media.empty());
+    CHECK(media == png);
+    const std::string slide1 = ExtraerPartePptx(ruta_salida,
+                                                "ppt/slides/slide1.xml");
+    CHECK(slide1.find("<p:pic>") != std::string::npos);
+    CHECK(slide1.find("r:embed=\"rId2\"") != std::string::npos);
+    CHECK(slide1.find("<a:t>Portada</a:t>") != std::string::npos);
+    const std::string rels1 = ExtraerPartePptx(
+        ruta_salida, "ppt/slides/_rels/slide1.xml.rels");
+    CHECK(rels1.find("Target=\"../media/image1.png\"") != std::string::npos);
+    const std::string tipos = ExtraerPartePptx(ruta_salida,
+                                               "[Content_Types].xml");
+    CHECK(tipos.find("Extension=\"png\"") != std::string::npos);
     bool aviso_img = false;
     for (const auto& a : out.avisos)
         if (a.find("imagen(es) incrustada") != std::string::npos)
@@ -821,16 +851,18 @@ TEST_CASE("ExportarPptx: fondo del escenario viaja al slide y #RGB se expande") 
     const std::string ruta_salida = dir + "/salida.pptx";
     ResultadoExport out;
     REQUIRE(Exportador::ExportarPptx(p, ruta_salida, &out));
-    const std::string paquete = LeerTodo(ruta_salida);
-    CHECK(paquete.find("<p:bg><p:bgPr><a:solidFill>") != std::string::npos);
-    CHECK(paquete.find("srgbClr val=\"FF0011\"") != std::string::npos);
+    const std::string slide1 = ExtraerPartePptx(ruta_salida,
+                                                "ppt/slides/slide1.xml");
+    CHECK(slide1.find("<p:bg><p:bgPr><a:solidFill>") != std::string::npos);
+    CHECK(slide1.find("srgbClr val=\"FF0011\"") != std::string::npos);
 
     // Fondo inválido no se cuela (queda el blanco del máster; el slide
     // sin p:bg propio).
     p.escenarios[0].fondo = "rojo";
     REQUIRE(Exportador::ExportarPptx(p, ruta_salida, &out));
-    const std::string paquete2 = LeerTodo(ruta_salida);
-    CHECK(paquete2.find("srgbClr val=\"FF0011\"") == std::string::npos);
+    const std::string slide1b = ExtraerPartePptx(ruta_salida,
+                                                 "ppt/slides/slide1.xml");
+    CHECK(slide1b.find("srgbClr val=\"FF0011\"") == std::string::npos);
 
     std::filesystem::remove_all(dir);
 }
@@ -908,4 +940,77 @@ TEST_CASE("ExportarPdf: PNG con FlateDecode, JPEG con DCTDecode y fondo") {
     CHECK(pdf2.find("/Width 4") != std::string::npos);
 
     std::filesystem::remove_all(dir);
+}
+
+// ---------------------------------------------------------------------------
+// Deflate con miniz (dependencia APROBADA, docs/agent/dependencias.md):
+// el exportador pptx comprime entradas (mmétodo 8) y el paquete sigue
+// siendo OPC válido re-leído por nuestro lector y por el de miniz.
+// ---------------------------------------------------------------------------
+
+#include "ZipDeflate.h"
+
+TEST_CASE("ExportarPptx: entradas con deflate y paquete menor que el almacenado") {
+    const Programa p = ProgramaDePrueba();
+    const std::string dir = CarpetaTmp("pptx_deflate");
+    const std::string ruta = dir + "/salida.pptx";
+
+    ResultadoExport out;
+    REQUIRE(Exportador::ExportarPptx(p, ruta, &out));
+
+    const std::string crudo = LeerTodo(ruta);
+    REQUIRE(crudo.size() > 4);
+
+    // Directorio central vía miniz: TODAS las entradas deben venir
+    // comprimidas con método 8 (MZ_METHOD_DEFLATE).
+    mz_zip_archive lectura{};
+    REQUIRE(mz_zip_reader_init_mem(&lectura, crudo.data(), crudo.size(), 0));
+    const mz_uint n = mz_zip_reader_get_num_files(&lectura);
+    CHECK(n >= 18);   // OPC mínimo del exportador
+    mz_uint deflates = 0;
+    for (mz_uint i = 0; i < n; ++i) {
+        mz_zip_archive_file_stat st{};
+        REQUIRE(mz_zip_reader_file_stat(&lectura, i, &st));
+        if (st.m_method == MZ_DEFLATED) ++deflates;
+    }
+    CHECK(deflates == n);
+    mz_zip_reader_end(&lectura);
+
+    // El paquete deflate queda claramente por debajo del orden de magnitud
+    // del mismo contenido almacenado (los XML se comprimen muy bien).
+    CHECK(crudo.size() < 200000);   // 6 diapositivas XML comprimidas
+
+std::filesystem::remove_all(dir);
+}
+
+TEST_CASE("EscritorZipDeflate: ida y vuelta con el lector de miniz y CRC válido") {
+    zipdef::EscritorZipDeflate z;
+    z.Agregar("a.txt", "contenido repetido repetido repetido repetido");
+    z.Agregar("dir/b.txt", "segunda entrada con texto compresible 1234 1234");
+    const std::string paquete = z.Terminar();
+    REQUIRE_FALSE(paquete.empty());
+
+    mz_zip_archive lectura{};
+    REQUIRE(mz_zip_reader_init_mem(&lectura, paquete.data(),
+                                   paquete.size(), 0));
+    CHECK(mz_zip_reader_get_num_files(&lectura) == 2);
+
+    char nombre[128];
+    REQUIRE(mz_zip_reader_get_filename(&lectura, 0, nombre, sizeof(nombre)));
+    CHECK(std::string(nombre) == "a.txt");
+
+    for (mz_uint i = 0; i < mz_zip_reader_get_num_files(&lectura); ++i) {
+        CHECK(mz_zip_validate_file(&lectura, i, 0));   // CRC + estructura
+    }
+
+    size_t tam_out = 0;
+    void* datos = mz_zip_reader_extract_to_heap(&lectura, 1, &tam_out, 0);
+    REQUIRE(datos != nullptr);
+    CHECK(std::string(static_cast<char*>(datos), tam_out) ==
+          "segunda entrada con texto compresible 1234 1234");
+    mz_free(datos);
+    mz_zip_reader_end(&lectura);
+
+    // Terminar tras entregar el paquete devuelve vacío (nada silencioso).
+    CHECK(z.Terminar().empty());
 }

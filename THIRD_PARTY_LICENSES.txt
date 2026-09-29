@@ -15,6 +15,7 @@ Núcleo (C++17, vendido en src/core/third_party/)
 | SQLite          | 3.x (amalg) | Public Domain | sqlite.org                                |
 | nlohmann/json   | 3.x         | MIT           | github.com/nlohmann/json                  |
 | pugixml         | 1.14        | MIT           | github.com/zeux/pugixml (vendido)         |
+| miniz           | 3.0.2       | MIT           | github.com/richgel999/miniz (vendido)     |
 | stb_image       | 2.30        | Public Domain | github.com/nothings/stb (vendido)         |
 | doctest         | 2.x         | MIT           | github.com/doctest/doctest (solo build)   |
 

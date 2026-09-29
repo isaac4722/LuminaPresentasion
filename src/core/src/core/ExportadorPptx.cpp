@@ -12,12 +12,15 @@
 //   ppt/theme/theme1.xml           (tema mínimo con clr/font/fmtScheme)
 //   ppt/slides/slideN.xml (+ rels) → un cuadro de texto con la unidad
 //
-// Las entradas van almacenadas (método 0): OPC válido; nuestro propio
-// LectorPptx relee el paquete y verifica CRC en los tests de round-trip.
+// Las entradas van COMPRIMIDAS con deflate (miniz, dependencia aprobada
+// en docs/agent/dependencias.md; antes método 0): OPC válido y paquetes
+// mucho más pequeños. Nuestro propio LectorPptx relee el paquete y
+// verifica CRC en los tests de round-trip.
 
 #include "fusion/core/Exportador.h"
 
 #include "ImagenesExport.h"
+#include "ZipDeflate.h"
 #include "ZipInterno.h"
 
 #include <cstdint>
@@ -458,7 +461,7 @@ bool Exportador::ExportarPptx(const Programa& p, const std::string& ruta_salida,
     }
 
     const int n = static_cast<int>(xml_diapos.size());
-    zipint::EscritorZip z;
+    zipdef::EscritorZipDeflate z;   // deflate (miniz), no almacenado
     z.Agregar("[Content_Types].xml", XmlContentTypes(n, extensiones_media));
 
     std::string rels_raiz = kDecl;
