@@ -239,6 +239,7 @@ int APIENTRY wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
 
     // 3. Núcleo (dueño de la proyección, sin UI propia)
     HANDLE hNucleo = nullptr;
+    bool nucleo_servible = false;   // pipe IPC listo (condición de la consola)
     {
         std::wstring ruta = ExeDir() + L"\\FusionCore.exe";
         DWORD rc = 0;
@@ -266,20 +267,71 @@ int APIENTRY wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
             } else {
                 RegistrarLinea(L"FusionCore.exe vivo tras 2,5 s");
             }
-            // El pipe IPC del núcleo debe existir (cliente de la consola).
-            if (WaitNamedPipeW(L"\\\\.\\pipe\\FusionHP-ipc", 3000)) {
-                RegistrarLinea(L"pipe IPC \\\\.\\pipe\\FusionHP-ipc listo");
-            } else {
-                RegistrarLinea(L"AVISO: el pipe IPC no respondió a tiempo "
-                               L"(el núcleo puede seguir arrancando)");
+
+            // ESPERA ACTIVA DEL PIPE (hasta 90 s, en pasos de 400 ms):
+            // la consola NO se abre hasta que el núcleo tenga el pipe
+            // IPC. Antes se esperaban 3 s y se arrancaba la consola igual;
+            // en el primer arranque (siembra de la biblia) eso producía
+            // "No se pudo conectar al núcleo". Hoy el núcleo crea el pipe
+            // en milisegundos, pero la espera paciente cubre discos lentos
+            // y antivirus que retrasan el arranque de procesos.
+            bool pipe_listo = false;
+            for (int paso = 0; paso < 90'000 / 400; ++paso) {
+                if (WaitNamedPipeW(L"\\\\.\\pipe\\FusionHP-ipc", 400)) {
+                    pipe_listo = true;
+                    break;
+                }
+                const DWORD err = GetLastError();
+                if (err == ERROR_PIPE_BUSY) {
+                    // El pipe EXISTE pero sus instancias están ocupadas:
+                    // para el arranque es "listo" (la consola reintenta).
+                    pipe_listo = true;
+                    RegistrarLinea(L"pipe IPC presente (ocupado en este "
+                                   L"instante); se continúa");
+                    break;
+                }
+                // ¿Murió el núcleo mientras esperábamos?
+                if (WaitForSingleObject(hNucleo, 0) == WAIT_OBJECT_0) {
+                    DWORD codigo = 0;
+                    GetExitCodeProcess(hNucleo, &codigo);
+                    wchar_t m[128];
+                    swprintf_s(m, 128,
+                               L"FusionCore.exe murió esperando el pipe "
+                               L"(código %u): ver runtime\\nucleo.log",
+                               codigo);
+                    RegistrarLinea(m);
+                    break;
+                }
+                if (paso % 12 == 0 && paso > 0) {
+                    wchar_t m[64];
+                    swprintf_s(m, 64,
+                               L"esperando el pipe IPC del núcleo (%d s)...",
+                               paso * 400 / 1000);
+                    RegistrarLinea(m);
+                }
+            }
+            RegistrarLinea(pipe_listo
+                ? L"pipe IPC \\\\.\\pipe\\FusionHP-ipc listo"
+                : L"AVISO: el pipe IPC no apareció a tiempo "
+                  L"(se omite la consola; no debe ver el error de conexión)");
+            if (!pipe_listo) {
+                // El núcleo no está servible: no abrir la consola para no
+                // mostrar "No se pudo conectar". El shell Qt (si existe)
+                // funciona sin IPC y es la alternativa visible.
+                if (hNucleo) CloseHandle(hNucleo);
+                hNucleo = nullptr;
             }
         }
+        nucleo_servible = (hNucleo != nullptr);
     }
 
-    // 4. Consola gestionada (WinForms). Ruta correcta del paquete:
-    //    gestionado\FusionHP.Managed.exe ("managed\" queda como legado).
+    // 4. Consola gestionada (WinForms). SOLO si el núcleo tiene el pipe
+    //    IPC listo: si el núcleo murió o no apareció el pipe, la consola
+    //    solo puede terminar en "No se pudo conectar al núcleo".
+    //    Ruta correcta del paquete: gestionado\FusionHP.Managed.exe
+    //    ("managed\" queda como legado).
     HANDLE hGest = nullptr;
-    if (hay_net48) {
+    if (hay_net48 && nucleo_servible) {
         std::wstring ruta = ExeDir() + L"\\gestionado\\FusionHP.Managed.exe";
         if (!ArchivoExiste(ruta))
             ruta = ExeDir() + L"\\managed\\FusionHP.Managed.exe";
@@ -315,8 +367,9 @@ int APIENTRY wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
         // Nada se abrió: aviso explícito con la ruta, nunca cierre mudo.
         RegistrarLinea(L"ERROR: no se pudo abrir ningún componente");
         MessageBoxW(nullptr,
-            L"No se pudo abrir FUSION-HP. Verifica que la carpeta esté "
-            L"completa:\r\n"
+            L"No se pudo abrir FUSION-HP. El núcleo (FusionCore.exe) no\r\n"
+            L"llegó a arrancar. Verifica que la carpeta esté completa y\r\n"
+            L"que el antivirus no bloquee FusionCore.exe:\r\n"
             L"  FusionCore.exe (núcleo)\r\n"
             L"  gestionado\\FusionHP.Managed.exe (consola, requiere .NET 4.8)\r\n"
             L"  qt\\FusionQtShell.exe (shell de escritorio)\r\n\r\n"
