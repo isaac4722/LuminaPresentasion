@@ -53,7 +53,7 @@ struct EstadoIpc {
 
 // Declaración adelantada: EscribirCliente (abajo) la usa y MSVC exige
 // verla declarada antes de la primera llamada.
-bool IoSolapado(HANDLE pipe, void* buf, DWORD tam, bool lectura,
+bool IoSolapado(HANDLE pipe, const void* buf, DWORD tam, bool lectura,
                 std::atomic<bool>* parar, DWORD* transferidos_out = nullptr);
 
 bool EscribirCliente(EstadoIpc& e, const std::shared_ptr<ClienteIpc>& cli,
@@ -69,7 +69,7 @@ bool EscribirCliente(EstadoIpc& e, const std::shared_ptr<ClienteIpc>& cli,
 // `parar` (opcional): atómico que corta la espera en trozos (parada del
 // servidor). `transferidos_out` (opcional) recibe el número REAL de bytes
 // leídos/escritos según GetOverlappedResult.
-bool IoSolapado(HANDLE pipe, void* buf, DWORD tam, bool lectura,
+bool IoSolapado(HANDLE pipe, const void* buf, DWORD tam, bool lectura,
                 std::atomic<bool>* parar, DWORD* transferidos_out) {
     if (transferidos_out) *transferidos_out = 0;
 
@@ -78,10 +78,13 @@ bool IoSolapado(HANDLE pipe, void* buf, DWORD tam, bool lectura,
     if (!ov.hEvent) return false;
 
     BOOL ok;
-    if (lectura)
-        ok = ReadFile(pipe, buf, tam, nullptr, &ov);
-    else
+    if (lectura) {
+        // ReadFile quiere LPVOID no-const; todas las llamadas internas de
+        // lectura pasan el data() de un buffer propio y escribible.
+        ok = ReadFile(pipe, const_cast<void*>(buf), tam, nullptr, &ov);
+    } else {
         ok = WriteFile(pipe, buf, tam, nullptr, &ov);
+    }
 
     if (!ok && GetLastError() == ERROR_IO_PENDING) {
         // Espera troceada: permite reaccionar a la parada del servidor.
