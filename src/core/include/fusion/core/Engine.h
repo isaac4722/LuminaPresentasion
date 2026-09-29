@@ -28,6 +28,7 @@ struct EstadoMotor {
     bool        negro           = false;
     bool        logo            = false;
     std::string monitor_dispositivo;
+    std::string biblia_activa;        // nombre del .fdb abierto (sin extensión)
 };
 
 // Tipo de evento emitido por el motor. Los clientes IPC se suscriben.
@@ -66,6 +67,31 @@ public:
     bool CerrarPrograma();
     std::vector<std::string> Recientes() const;
 
+    // Programa construible: agregan contenido al programa actual y
+    // devuelven los ids generados (para navegar a ellos por IPC).
+    bool AgregarTexto(const std::string& titulo,
+                      const std::vector<std::string>& lineas,
+                      std::string* escenario_out,
+                      std::string* elemento_out);
+    // Un escenario por canto, un elemento por sección (verso/coro...).
+    bool AgregarCanto(std::int64_t canto_id,
+                      std::string* escenario_out,
+                      std::string* primer_elemento_out);
+    // biblia vacía = la activa; modo tercio = lower third.
+    bool AgregarVersiculo(const std::string& cita,
+                          const std::string& biblia,
+                          bool tercio,
+                          std::string* escenario_out,
+                          std::string* elemento_out);
+    // Un elemento por diapositiva (lectura directa, sin PowerPoint).
+    bool AgregarPptx(const std::string& ruta,
+                     std::string* escenario_out,
+                     int* diapositivas_out);
+    bool QuitarElemento(const std::string& escenario_id,
+                        const std::string& elemento_id);
+    // Programa actual serializado ahp.v1 (vacío si no hay programa).
+    std::string ProgramaEstado() const;
+
     // Proyección -------------------------------------------------------
     bool IniciarProyeccion();
     bool DetenerProyeccion();
@@ -93,6 +119,13 @@ public:
 
     // Biblia -----------------------------------------------------------
     std::vector<std::string> ListarBiblias() const;
+    // Selección real de biblia activa (reabre el .fdb). Falso si el
+    // nombre no existe en la carpeta de biblias.
+    bool SeleccionarBiblia(const std::string& nombre);
+    std::string BibliaActiva() const;
+    // Árbol completo: 66 libros con nombre/abreviatura y sus capítulos.
+    std::vector<LibroBiblia> ListarLibros() const;
+    std::vector<int> ListarCapitulos(int libro_id) const;
     bool ObtenerVersiculo(const std::string& biblia,
                           const std::string& cita,
                           std::string* texto_out) const;
@@ -102,8 +135,8 @@ public:
     std::vector<std::string> FavoritosBiblia() const;
 
     // Cantos -----------------------------------------------------------
-    // (la BD los sirve directamente; no se generan PPTX ni archivos intermedios)
-    std::vector<std::string> ListarCantos() const;
+    // Lista completa con id: la carcasa necesita el id para abrir/agregar.
+    std::vector<Canto> ListarCantos() const;
     std::vector<Canto> BuscarCantos(const std::string& texto, int limite) const;
     bool ObtenerCanto(std::int64_t id, CantoDetalle* out) const;
 

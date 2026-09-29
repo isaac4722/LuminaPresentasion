@@ -103,6 +103,20 @@ estos son eventos que el cliente debe manejar (suscripción). Tienen
 | `programa.guardar`  | `{ ruta? }`                              | `{ ok, ruta }`                  |
 | `programa.cerrar`    | `{}`                                     | `{ ok }`                        |
 | `programa.recientes`| `{}`                                     | `{ ok, recientes: [...] }`      |
+| `programa.estado`   | `{}`                                     | `{ ok, programa: ahp.v1 o null }` |
+| `programa.agregar_texto` | `{ titulo?, lineas: [..] }`         | `{ ok, escenario_id, elemento_id }` |
+| `programa.agregar_canto` | `{ id }`                            | `{ ok, escenario_id, elemento_id }` |
+| `programa.agregar_versiculo` | `{ cita, biblia?, modo? }`      | `{ ok, escenario_id, elemento_id }` |
+| `programa.agregar_pptx` | `{ ruta }`                           | `{ ok, escenario_id, diapositivas }` |
+| `programa.quitar_elemento` | `{ escenario_id, elemento_id }`  | `{ ok }`                        |
+
+Los comandos `programa.agregar_*` construyen el programa dentro del motor
+(dueño del estado): sin programa cargado crean uno rápido ("Programa
+rápido"). Devuelven los ids generados para navegar a ellos con
+`proyeccion.escenario` / `proyeccion.elemento`. `programa.agregar_canto`
+crea UN elemento por sección del canto (verso/coro...);
+`programa.agregar_pptx` lee el paquete directo (sin PowerPoint, nada se
+ejecuta) y crea UN elemento por diapositiva con `modo: "directo"`.
 
 ### Proyección
 
@@ -130,16 +144,23 @@ estos son eventos que el cliente debe manejar (suscripción). Tienen
 
 | Comando             | Payload                                  | Result                          |
 |---------------------|------------------------------------------|---------------------------------|
-| `biblia.listar`     | `{}`                                     | `{ ok, biblias: [...] }`        |
-| `biblia.obtener`    | `{ biblia, cita }`                       | `{ ok, texto }`                 |
-| `biblia.buscar`     | `{ biblia, texto, limite? }`             | `{ ok, resultados: [...] }`      |
+| `biblia.listar`     | `{}`                                     | `{ ok, biblias: [...], activa }` |
+| `biblia.seleccionar`| `{ nombre }`                             | `{ ok, activa }`                |
+| `biblia.libros`     | `{}`                                     | `{ ok, libros: [{numero, nombre, abrev3, abrev2, testamento}] }` |
+| `biblia.capitulos`  | `{ libro: 1..66 }`                       | `{ ok, libro, capitulos: [...] }` |
+| `biblia.obtener`    | `{ biblia?, cita }`                      | `{ ok, texto }`                 |
+| `biblia.buscar`     | `{ biblia?, texto, limite? }`            | `{ ok, resultados: [...] }`      |
 | `biblia.favoritos`  | `{}`                                     | `{ ok, favoritos: [...] }`      |
+
+`biblia.seleccionar` reabre el .fdb pedido como biblia activa del motor
+(falso si el nombre no existe en la carpeta de biblias). El estado
+(`estado.lector`) incluye `biblia_activa`.
 
 ### Cantos
 
 | Comando             | Payload                                  | Result                          |
 |---------------------|------------------------------------------|---------------------------------|
-| `canto.listar`      | `{}`                                     | `{ ok, cantos: [...] }`         |
+| `canto.listar`      | `{}`                                     | `{ ok, cantos: [{id, titulo, autor, tono_origen, bpm}] }` |
 | `canto.obtener`     | `{ id }`                                 | `{ ok, canto: {...} }`          |
 | `canto.buscar`      | `{ texto }`                              | `{ ok, resultados: [...] }`      |
 

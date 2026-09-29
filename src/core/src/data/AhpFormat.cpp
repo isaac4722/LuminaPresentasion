@@ -169,6 +169,7 @@ bool AhpFormat::CargarFromString(const std::string& json_text, Programa* out,
                                        : ParseModo(modo_json);
             }
             e.ruta             = elj.value("ruta", "");
+            e.diapositiva      = elj.value("diapositiva", 0);
             e.ajuste           = ParseAjuste(elj.value("ajuste", "cubrir"));
             e.bucle_video      = elj.value("bucle", false);
             e.audio_video      = elj.value("audio", true);
@@ -230,6 +231,8 @@ std::string AhpFormat::Serializar(const Programa& p) {
             if (!el.texto_versiculo.empty()) elj["texto"]   = el.texto_versiculo;
             if (el.tipo == TipoElemento::Pptx) {
                 elj["modo"] = ModoPptxATexto(el.modo_pptx);
+                if (el.diapositiva > 0)
+                    elj["diapositiva"] = el.diapositiva;
             } else if (el.tipo == TipoElemento::Versiculo) {
                 elj["modo"] = el.modo_versiculo == ModoVersiculo::Tercio
                                   ? "tercio" : "completo";

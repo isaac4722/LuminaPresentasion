@@ -94,8 +94,84 @@ struct ServicioFalso : IServicioNucleo {
     std::vector<std::string> FavoritosBiblia() override {
         return {"Salmo 100:4"};
     }
-    std::vector<std::string> ListarCantos() override {
-        return {"Cuán grande es Él"};
+    std::vector<LibroBiblia> ListarLibros() override {
+        return {LibroBiblia{1, "Génesis", "Gen", "Ge", "AT"},
+                LibroBiblia{66, "Apocalipsis", "Apo", "Ap", "NT"}};
+    }
+    std::vector<int> ListarCapitulos(int libro_id) override {
+        return libro_id == 1 ? std::vector<int>{1, 2, 3}
+                             : std::vector<int>{1};
+    }
+    bool SeleccionarBiblia(const std::string& nombre) override {
+        ultima_biblia = nombre;
+        return nombre == "RVR1909";
+    }
+    std::string BibliaActiva() override { return "RVR1909"; }
+
+    // grabaciones del programa construible
+    std::string ultima_biblia;
+    std::string ultimo_titulo_texto;
+    std::vector<std::string> ultimas_lineas;
+    std::int64_t ultimo_canto_agregado = -1;
+    std::string ultima_cita_agregada;
+    bool ultimo_tercio = false;
+    std::string ultima_ruta_pptx;
+    std::string ultimo_elemento_quitado;
+    std::string programa_estado_ahp;   // vacío = sin programa
+
+    bool AgregarTexto(const std::string& titulo,
+                      const std::vector<std::string>& lineas,
+                      std::string* escenario_out,
+                      std::string* elemento_out) override {
+        if (lineas.empty()) return false;
+        ultimo_titulo_texto = titulo;
+        ultimas_lineas = lineas;
+        if (escenario_out) *escenario_out = "esc-1";
+        if (elemento_out)  *elemento_out  = "el-1";
+        return true;
+    }
+    bool AgregarCanto(std::int64_t canto_id, std::string* escenario_out,
+                      std::string* primer_elemento_out) override {
+        if (canto_id != 5) return false;
+        ultimo_canto_agregado = canto_id;
+        if (escenario_out) *escenario_out = "esc-canto";
+        if (primer_elemento_out) *primer_elemento_out = "el-canto-1";
+        return true;
+    }
+    bool AgregarVersiculo(const std::string& cita,
+                          const std::string& biblia, bool tercio,
+                          std::string* escenario_out,
+                          std::string* elemento_out) override {
+        if (cita != "Juan 3:16") return false;
+        ultima_cita_agregada = cita;
+        ultimo_tercio = tercio;
+        (void)biblia;
+        if (escenario_out) *escenario_out = "esc-vers";
+        if (elemento_out)  *elemento_out  = "el-vers-1";
+        return true;
+    }
+    bool AgregarPptx(const std::string& ruta, std::string* escenario_out,
+                     int* diapositivas_out) override {
+        if (ruta != "clase.pptx") return false;
+        ultima_ruta_pptx = ruta;
+        if (escenario_out) *escenario_out = "esc-pptx";
+        if (diapositivas_out) *diapositivas_out = 12;
+        return true;
+    }
+    bool QuitarElemento(const std::string& escenario_id,
+                        const std::string& elemento_id) override {
+        (void)escenario_id;
+        ultimo_elemento_quitado = elemento_id;
+        return elemento_id == "el-1";
+    }
+    std::string ProgramaEstado() override {
+        return programa_estado_ahp;
+    }
+    std::vector<CantoIpc> ListarCantos() override {
+        CantoIpc c;
+        c.id = 5; c.titulo = "Cuán grande es Él"; c.autor = "Anónimo";
+        c.tono_origen = "C"; c.bpm = 72;
+        return {c};
     }
     CantoIpc ObtenerCanto(std::int64_t id, bool* ok) override {
         ultimo_canto_id = id;
@@ -361,4 +437,157 @@ TEST_CASE("RespuestaCargando: sin id no rompe el JSON") {
     nlohmann::json j = nlohmann::json::parse(r.raw_json, nullptr, false);
     CHECK_FALSE(j.is_discarded());
     CHECK(j.contains("error"));
+}
+
+// ---------------------------------------------------------------------------
+// Programa construible por IPC (la consola puede ARMAR el culto)
+// ---------------------------------------------------------------------------
+
+TEST_CASE("ProcesarIpc: programa.estado con programa devuelve ahp parseado") {
+    ServicioFalso s;
+    s.programa_estado_ahp = R"({"formato":"ahp","version":1,)"
+                            R"("meta":{"titulo":"Culto"},"escenarios":[]})";
+    auto r = Enviar(s, R"({"ipc":"fusion","version":1,"type":"programa.estado","id":"p-1","payload":{}})");
+    REQUIRE(r.ok);
+    CHECK(Tiene(r.raw_json, "\"titulo\":\"Culto\""));
+}
+
+TEST_CASE("ProcesarIpc: programa.estado sin programa devuelve null") {
+    ServicioFalso s;
+    auto r = Enviar(s, R"({"ipc":"fusion","version":1,"type":"programa.estado","id":"p-2","payload":{}})");
+    REQUIRE(r.ok);
+    CHECK(Tiene(r.raw_json, "\"programa\":null"));
+}
+
+TEST_CASE("ProcesarIpc: programa.agregar_texto pasa titulo y lineas") {
+    ServicioFalso s;
+    auto r = Enviar(s, R"({"ipc":"fusion","version":1,"type":"programa.agregar_texto","id":"p-3","payload":{"titulo":"Bienvenida","lineas":["Bienvenidos","en el nombre del Señor"]}})");
+    REQUIRE(r.ok);
+    CHECK(s.ultimo_titulo_texto == "Bienvenida");
+    REQUIRE(s.ultimas_lineas.size() == 2);
+    CHECK(s.ultimas_lineas[1] == "en el nombre del Señor");
+    CHECK(Tiene(r.raw_json, "\"escenario_id\":\"esc-1\""));
+    CHECK(Tiene(r.raw_json, "\"elemento_id\":\"el-1\""));
+}
+
+TEST_CASE("ProcesarIpc: programa.agregar_texto sin lineas responde E_BAD_PAYLOAD") {
+    ServicioFalso s;
+    auto r = Enviar(s, R"({"ipc":"fusion","version":1,"type":"programa.agregar_texto","id":"p-4","payload":{"titulo":"vacio"}})");
+    CHECK_FALSE(r.ok);
+    CHECK(Tiene(r.raw_json, "E_BAD_PAYLOAD"));
+
+    auto r2 = Enviar(s, R"({"ipc":"fusion","version":1,"type":"programa.agregar_texto","id":"p-5","payload":{"lineas":[1,2]}})");
+    CHECK_FALSE(r2.ok);
+    CHECK(Tiene(r2.raw_json, "E_BAD_PAYLOAD"));
+}
+
+TEST_CASE("ProcesarIpc: programa.agregar_canto pasa el id y falla honesto") {
+    ServicioFalso s;
+    auto r = Enviar(s, R"({"ipc":"fusion","version":1,"type":"programa.agregar_canto","id":"p-6","payload":{"id":5}})");
+    REQUIRE(r.ok);
+    CHECK(s.ultimo_canto_agregado == 5);
+
+    auto r2 = Enviar(s, R"({"ipc":"fusion","version":1,"type":"programa.agregar_canto","id":"p-7","payload":{"id":999}})");
+    CHECK_FALSE(r2.ok);
+    CHECK(Tiene(r2.raw_json, "E_NOT_FOUND"));
+}
+
+TEST_CASE("ProcesarIpc: programa.agregar_versiculo distingue modo tercio") {
+    ServicioFalso s;
+    auto r = Enviar(s, R"({"ipc":"fusion","version":1,"type":"programa.agregar_versiculo","id":"p-8","payload":{"cita":"Juan 3:16"}})");
+    REQUIRE(r.ok);
+    CHECK(s.ultima_cita_agregada == "Juan 3:16");
+    CHECK_FALSE(s.ultimo_tercio);
+
+    auto r2 = Enviar(s, R"({"ipc":"fusion","version":1,"type":"programa.agregar_versiculo","id":"p-9","payload":{"cita":"Juan 3:16","modo":"tercio"}})");
+    REQUIRE(r2.ok);
+    CHECK(s.ultimo_tercio);
+
+    auto r3 = Enviar(s, R"({"ipc":"fusion","version":1,"type":"programa.agregar_versiculo","id":"p-10","payload":{"cita":"Inexistente 1:1"}})");
+    CHECK_FALSE(r3.ok);
+    CHECK(Tiene(r3.raw_json, "E_NOT_FOUND"));
+}
+
+TEST_CASE("ProcesarIpc: programa.agregar_pptx reporta diapositivas") {
+    ServicioFalso s;
+    auto r = Enviar(s, R"({"ipc":"fusion","version":1,"type":"programa.agregar_pptx","id":"p-11","payload":{"ruta":"clase.pptx"}})");
+    REQUIRE(r.ok);
+    CHECK(s.ultima_ruta_pptx == "clase.pptx");
+    CHECK(Tiene(r.raw_json, "\"diapositivas\":12"));
+
+    auto r2 = Enviar(s, R"({"ipc":"fusion","version":1,"type":"programa.agregar_pptx","id":"p-12","payload":{"ruta":"roto.pptx"}})");
+    CHECK_FALSE(r2.ok);
+    CHECK(Tiene(r2.raw_json, "E_IO"));
+}
+
+TEST_CASE("ProcesarIpc: programa.quitar_elemento pasa los ids") {
+    ServicioFalso s;
+    auto r = Enviar(s, R"({"ipc":"fusion","version":1,"type":"programa.quitar_elemento","id":"p-13","payload":{"escenario_id":"esc-1","elemento_id":"el-1"}})");
+    REQUIRE(r.ok);
+    CHECK(s.ultimo_elemento_quitado == "el-1");
+
+    auto r2 = Enviar(s, R"({"ipc":"fusion","version":1,"type":"programa.quitar_elemento","id":"p-14","payload":{"escenario_id":"esc-1","elemento_id":"el-404"}})");
+    CHECK_FALSE(r2.ok);
+    CHECK(Tiene(r2.raw_json, "E_NOT_FOUND"));
+}
+
+// ---------------------------------------------------------------------------
+// Biblia completa: selección, árbol de libros, capítulos
+// ---------------------------------------------------------------------------
+
+TEST_CASE("ProcesarIpc: biblia.listar incluye la biblia activa") {
+    ServicioFalso s;
+    auto r = Enviar(s, R"({"ipc":"fusion","version":1,"type":"biblia.listar","id":"b-1","payload":{}})");
+    REQUIRE(r.ok);
+    CHECK(Tiene(r.raw_json, "\"activa\":\"RVR1909\""));
+    CHECK(Tiene(r.raw_json, "RVR1909"));
+}
+
+TEST_CASE("ProcesarIpc: biblia.seleccionar pasa el nombre y valida") {
+    ServicioFalso s;
+    auto r = Enviar(s, R"({"ipc":"fusion","version":1,"type":"biblia.seleccionar","id":"b-2","payload":{"nombre":"RVR1909"}})");
+    REQUIRE(r.ok);
+    CHECK(s.ultima_biblia == "RVR1909");
+
+    auto r2 = Enviar(s, R"({"ipc":"fusion","version":1,"type":"biblia.seleccionar","id":"b-3","payload":{"nombre":"NoExiste"}})");
+    CHECK_FALSE(r2.ok);
+    CHECK(Tiene(r2.raw_json, "E_NOT_FOUND"));
+}
+
+TEST_CASE("ProcesarIpc: biblia.libros da el árbol con testamento") {
+    ServicioFalso s;
+    auto r = Enviar(s, R"({"ipc":"fusion","version":1,"type":"biblia.libros","id":"b-4","payload":{}})");
+    REQUIRE(r.ok);
+    CHECK(Tiene(r.raw_json, "Génesis"));
+    CHECK(Tiene(r.raw_json, "Apocalipsis"));
+    CHECK(Tiene(r.raw_json, "\"testamento\":\"AT\""));
+    CHECK(Tiene(r.raw_json, "\"testamento\":\"NT\""));
+}
+
+TEST_CASE("ProcesarIpc: biblia.capitulos valida rango y devuelve enteros") {
+    ServicioFalso s;
+    auto r = Enviar(s, R"({"ipc":"fusion","version":1,"type":"biblia.capitulos","id":"b-5","payload":{"libro":1}})");
+    REQUIRE(r.ok);
+    CHECK(Tiene(r.raw_json, "\"capitulos\":[1,2,3]"));
+
+    auto r2 = Enviar(s, R"({"ipc":"fusion","version":1,"type":"biblia.capitulos","id":"b-6","payload":{"libro":99}})");
+    CHECK_FALSE(r2.ok);
+    CHECK(Tiene(r2.raw_json, "E_BAD_PAYLOAD"));
+}
+
+TEST_CASE("ProcesarIpc: canto.listar devuelve estructura con id") {
+    ServicioFalso s;
+    auto r = Enviar(s, R"({"ipc":"fusion","version":1,"type":"canto.listar","id":"c-1","payload":{}})");
+    REQUIRE(r.ok);
+    CHECK(Tiene(r.raw_json, "\"id\":5"));
+    CHECK(Tiene(r.raw_json, "Cuán grande es Él"));
+    CHECK(Tiene(r.raw_json, "\"tono_origen\":\"C\""));
+}
+
+TEST_CASE("ProcesarIpc: estado.lector incluye biblia_activa") {
+    ServicioFalso s;
+    s.estado.biblia_activa = "RVR1909";
+    auto r = Enviar(s, R"({"ipc":"fusion","version":1,"type":"estado.lector","id":"e-1","payload":{}})");
+    REQUIRE(r.ok);
+    CHECK(Tiene(r.raw_json, "\"biblia_activa\":\"RVR1909\""));
 }

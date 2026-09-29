@@ -63,6 +63,10 @@ struct Elemento {
     ModoVersiculo modo_versiculo = ModoVersiculo::Completo;
     ModoPptx      modo_pptx      = ModoPptx::Com;
     std::string ruta;            // imagen/video/pptx
+    // Solo pptx (modo directo): diapositiva concreta del paquete,
+    // 1-based. 0 = el archivo entero (compatibilidad con programas
+    // antiguos; los generados por IPC siempre traen 1..N).
+    int diapositiva = 0;
     AjusteImagen ajuste = AjusteImagen::Cubrir;
     bool         bucle_video = false;
     bool         audio_video = true;

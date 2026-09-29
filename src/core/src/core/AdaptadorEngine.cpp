@@ -79,8 +79,60 @@ std::vector<std::string> AdaptadorEngine::FavoritosBiblia() {
     return motor_.FavoritosBiblia();
 }
 
-std::vector<std::string> AdaptadorEngine::ListarCantos() {
-    return motor_.ListarCantos();
+std::vector<LibroBiblia> AdaptadorEngine::ListarLibros() {
+    return motor_.ListarLibros();
+}
+std::vector<int> AdaptadorEngine::ListarCapitulos(int libro_id) {
+    return motor_.ListarCapitulos(libro_id);
+}
+bool AdaptadorEngine::SeleccionarBiblia(const std::string& nombre) {
+    return motor_.SeleccionarBiblia(nombre);
+}
+std::string AdaptadorEngine::BibliaActiva() {
+    return motor_.BibliaActiva();
+}
+
+bool AdaptadorEngine::AgregarTexto(const std::string& titulo,
+                                   const std::vector<std::string>& lineas,
+                                   std::string* escenario_out,
+                                   std::string* elemento_out) {
+    return motor_.AgregarTexto(titulo, lineas, escenario_out, elemento_out);
+}
+bool AdaptadorEngine::AgregarCanto(std::int64_t canto_id,
+                                   std::string* escenario_out,
+                                   std::string* primer_elemento_out) {
+    return motor_.AgregarCanto(canto_id, escenario_out, primer_elemento_out);
+}
+bool AdaptadorEngine::AgregarVersiculo(const std::string& cita,
+                                       const std::string& biblia,
+                                       bool tercio,
+                                       std::string* escenario_out,
+                                       std::string* elemento_out) {
+    return motor_.AgregarVersiculo(cita, biblia, tercio, escenario_out,
+                                   elemento_out);
+}
+bool AdaptadorEngine::AgregarPptx(const std::string& ruta,
+                                  std::string* escenario_out,
+                                  int* diapositivas_out) {
+    return motor_.AgregarPptx(ruta, escenario_out, diapositivas_out);
+}
+bool AdaptadorEngine::QuitarElemento(const std::string& escenario_id,
+                                     const std::string& elemento_id) {
+    return motor_.QuitarElemento(escenario_id, elemento_id);
+}
+std::string AdaptadorEngine::ProgramaEstado() {
+    return motor_.ProgramaEstado();
+}
+
+std::vector<CantoIpc> AdaptadorEngine::ListarCantos() {
+    std::vector<CantoIpc> out;
+    for (const auto& c : motor_.ListarCantos()) {
+        CantoIpc ci;
+        ci.id = c.id; ci.titulo = c.titulo; ci.autor = c.autor;
+        ci.tono_origen = c.tono_origen; ci.bpm = c.bpm;
+        out.push_back(ci);
+    }
+    return out;
 }
 CantoIpc AdaptadorEngine::ObtenerCanto(std::int64_t id, bool* ok) {
     CantoDetalle d;

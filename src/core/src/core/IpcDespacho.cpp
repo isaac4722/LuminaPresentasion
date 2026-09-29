@@ -71,6 +71,7 @@ json EstadoJson(const EstadoMotor& e) {
     r["negro"]               = e.negro;
     r["logo"]                = e.logo;
     r["monitor_dispositivo"] = e.monitor_dispositivo;
+    r["biblia_activa"]       = e.biblia_activa;
     return r;
 }
 
@@ -185,6 +186,92 @@ RespuestaIpc Despachar(IServicioNucleo& s, const std::string& tipo,
         return RespuestaOk(id, res);
     }
 
+    // --- Programa construible ---------------------------------------------
+    if (tipo == "programa.estado") {
+        std::string ahp = s.ProgramaEstado();
+        json res;
+        if (ahp.empty()) {
+            res["programa"] = nullptr;
+        } else {
+            json prog = json::parse(ahp, nullptr, false);
+            res["programa"] = prog.is_discarded() ? nullptr : prog;
+        }
+        return RespuestaOk(id, res);
+    }
+    if (tipo == "programa.agregar_texto") {
+        std::string titulo;
+        if (p.contains("titulo") && p["titulo"].is_string())
+            titulo = p["titulo"].get<std::string>();
+        if (!p.contains("lineas") || !p["lineas"].is_array() ||
+            p["lineas"].empty())
+            return RespuestaError(id, "E_BAD_PAYLOAD",
+                                  "faltan 'lineas' (array no vacío)");
+        std::vector<std::string> lineas;
+        for (const auto& l : p["lineas"]) {
+            if (!l.is_string())
+                return RespuestaError(id, "E_BAD_PAYLOAD",
+                                      "'lineas' debe ser array de strings");
+            lineas.push_back(l.get<std::string>());
+        }
+        std::string esc, el;
+        if (!s.AgregarTexto(titulo, lineas, &esc, &el))
+            return RespuestaError(id, "E_INTERNAL",
+                                  "no se pudo agregar el texto");
+        return RespuestaOk(id, json{ {"escenario_id", esc},
+                                     {"elemento_id", el} });
+    }
+    if (tipo == "programa.agregar_canto") {
+        if (!p.contains("id") || !(p["id"].is_number_integer() ||
+                                   p["id"].is_string()))
+            return RespuestaError(id, "E_BAD_PAYLOAD", "falta 'id'");
+        std::int64_t cid = p["id"].is_string()
+            ? std::atoll(p["id"].get<std::string>().c_str())
+            : p["id"].get<std::int64_t>();
+        std::string esc, el;
+        if (!s.AgregarCanto(cid, &esc, &el))
+            return RespuestaError(id, "E_NOT_FOUND",
+                                  "canto no encontrado o sin secciones: " +
+                                  std::to_string(cid));
+        return RespuestaOk(id, json{ {"escenario_id", esc},
+                                     {"elemento_id", el} });
+    }
+    if (tipo == "programa.agregar_versiculo") {
+        std::string cita, biblia;
+        if (!Campo(p, "cita", &cita))
+            return RespuestaError(id, "E_BAD_PAYLOAD", "falta 'cita'");
+        if (p.contains("biblia") && p["biblia"].is_string())
+            biblia = p["biblia"].get<std::string>();
+        bool tercio = p.value("modo", "completo") == "tercio";
+        std::string esc, el;
+        if (!s.AgregarVersiculo(cita, biblia, tercio, &esc, &el))
+            return RespuestaError(id, "E_NOT_FOUND",
+                                  "cita no encontrada: " + cita);
+        return RespuestaOk(id, json{ {"escenario_id", esc},
+                                     {"elemento_id", el} });
+    }
+    if (tipo == "programa.agregar_pptx") {
+        std::string ruta;
+        if (!Campo(p, "ruta", &ruta))
+            return RespuestaError(id, "E_BAD_PAYLOAD", "falta 'ruta'");
+        std::string esc;
+        int n_diapos = 0;
+        if (!s.AgregarPptx(ruta, &esc, &n_diapos))
+            return RespuestaError(id, "E_IO",
+                                  "no se pudo leer el paquete pptx: " + ruta);
+        return RespuestaOk(id, json{ {"escenario_id", esc},
+                                     {"diapositivas", n_diapos} });
+    }
+    if (tipo == "programa.quitar_elemento") {
+        std::string esc, el;
+        if (!Campo(p, "escenario_id", &esc) || !Campo(p, "elemento_id", &el))
+            return RespuestaError(id, "E_BAD_PAYLOAD",
+                                  "faltan 'escenario_id' o 'elemento_id'");
+        if (!s.QuitarElemento(esc, el))
+            return RespuestaError(id, "E_NOT_FOUND",
+                                  "elemento: " + el);
+        return RespuestaOk(id, json::object());
+    }
+
     // --- Proyección --------------------------------------------------------
     if (tipo == "proyeccion.iniciar") {
         if (!s.IniciarProyeccion())
@@ -270,7 +357,39 @@ RespuestaIpc Despachar(IServicioNucleo& s, const std::string& tipo,
     if (tipo == "biblia.listar") {
         json res;
         res["biblias"] = s.ListarBiblias();
+        res["activa"]  = s.BibliaActiva();
         return RespuestaOk(id, res);
+    }
+    if (tipo == "biblia.seleccionar") {
+        std::string nombre;
+        if (!Campo(p, "nombre", &nombre))
+            return RespuestaError(id, "E_BAD_PAYLOAD", "falta 'nombre'");
+        if (!s.SeleccionarBiblia(nombre))
+            return RespuestaError(id, "E_NOT_FOUND", "biblia: " + nombre);
+        return RespuestaOk(id, json{ {"activa", nombre} });
+    }
+    if (tipo == "biblia.libros") {
+        json libros = json::array();
+        for (const auto& lb : s.ListarLibros())
+            libros.push_back({ {"numero", lb.id},
+                               {"nombre", lb.nombre},
+                               {"abrev3", lb.abrev3},
+                               {"abrev2", lb.abrev2},
+                               {"testamento", lb.testamento} });
+        return RespuestaOk(id, json{ {"libros", libros} });
+    }
+    if (tipo == "biblia.capitulos") {
+        if (!p.contains("libro") || !p["libro"].is_number_integer())
+            return RespuestaError(id, "E_BAD_PAYLOAD",
+                                  "falta 'libro' (entero 1..66)");
+        int libro = p["libro"].get<int>();
+        if (libro < 1 || libro > 66)
+            return RespuestaError(id, "E_BAD_PAYLOAD",
+                                  "'libro' fuera de rango (1..66)");
+        json caps = json::array();
+        for (int c : s.ListarCapitulos(libro)) caps.push_back(c);
+        return RespuestaOk(id, json{ {"libro", libro},
+                                     {"capitulos", caps} });
     }
     if (tipo == "biblia.obtener") {
         std::string biblia = p.value("biblia", "");
@@ -301,9 +420,10 @@ RespuestaIpc Despachar(IServicioNucleo& s, const std::string& tipo,
 
     // --- Cantos ------------------------------------------------------------
     if (tipo == "canto.listar") {
-        json res;
-        res["cantos"] = s.ListarCantos();
-        return RespuestaOk(id, res);
+        json a = json::array();
+        for (const auto& c : s.ListarCantos())
+            a.push_back(CantoJson(c, false));
+        return RespuestaOk(id, json{ {"cantos", a} });
     }
     if (tipo == "canto.obtener") {
         if (!p.contains("id") || !(p["id"].is_number_integer() ||

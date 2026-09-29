@@ -13,12 +13,14 @@
 #include "fusion/data/SongDatabase.h"
 #include "fusion/data/BibleDatabase.h"
 #include "fusion/data/AhpFormat.h"
+#include "fusion/core/PptxDirecto.h"
 #include "Navegacion.h"
 
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
 #include <windows.h>
 
+#include <algorithm>
 #include <atomic>
 #include <memory>
 #include <mutex>
@@ -124,6 +126,7 @@ bool Engine::Iniciar() {
     SembrarBibliaRVR1909SiFalta();
     impl_->biblia_activa = std::make_unique<BibleDatabase>();
     if (impl_->biblia_activa->Abrir(rutas::BibliaFdb("RVR1909.fdb"))) {
+        impl_->estado.biblia_activa = "RVR1909";
         rutas::Bitacora("biblia activa: RVR1909 (" +
                         std::to_string(impl_->biblia_activa->TotalVersiculos()) +
                         " versículos)");
@@ -213,6 +216,215 @@ std::vector<std::string> Engine::Recientes() const {
     r.reserve(s.recientes.size());
     for (auto& rec : s.recientes) r.push_back(rec.ruta);
     return r;
+}
+
+// --- Programa construible ------------------------------------------------
+namespace {
+
+// Ids únicos dentro del programa: esc-NNN / esc-NNN-el-NNN. Los ids
+// únicos son precondición de AhpFormat::Validar.
+std::string SiguienteIdEscenario(const Programa& p) {
+    int n = static_cast<int>(p.escenarios.size()) + 1;
+    return "esc-" + std::to_string(n);
+}
+
+std::string SiguienteIdElemento(const Programa& p) {
+    int total = 0;
+    for (const auto& e : p.escenarios)
+        total += static_cast<int>(e.elementos.size());
+    return "el-" + std::to_string(total + 1);
+}
+
+} // namespace
+
+bool Engine::AgregarTexto(const std::string& titulo,
+                          const std::vector<std::string>& lineas,
+                          std::string* escenario_out,
+                          std::string* elemento_out) {
+    if (lineas.empty()) return false;
+    std::lock_guard<std::mutex> lk(impl_->m);
+    if (!impl_->hay_programa) {
+        impl_->programa_actual = Programa{};
+        impl_->programa_actual.titulo = "Programa rápido";
+        impl_->hay_programa = true;
+        impl_->estado.programa_titulo = impl_->programa_actual.titulo;
+    }
+    Escenario esc;
+    esc.id     = SiguienteIdEscenario(impl_->programa_actual);
+    esc.nombre = titulo.empty() ? "Notas" : titulo;
+    Elemento el;
+    el.id     = SiguienteIdElemento(impl_->programa_actual);
+    el.tipo   = TipoElemento::Texto;
+    el.titulo = esc.nombre;
+    for (const auto& l : lineas) el.lineas.push_back(LineaTexto{l, ""});
+    esc.elementos.push_back(std::move(el));
+    impl_->programa_actual.escenarios.push_back(std::move(esc));
+    if (escenario_out) *escenario_out = impl_->programa_actual.escenarios.back().id;
+    if (elemento_out)  *elemento_out  = impl_->programa_actual.escenarios.back().elementos.front().id;
+    impl_->Emitir(EventoMotor::ProgramaCargado);
+    return true;
+}
+
+bool Engine::AgregarCanto(std::int64_t canto_id,
+                          std::string* escenario_out,
+                          std::string* primer_elemento_out) {
+    CantoDetalle detalle;
+    {
+        if (!impl_->canciones) return false;
+        if (!impl_->canciones->Obtener(canto_id, &detalle)) return false;
+    }
+    if (detalle.secciones.empty()) return false;
+    std::lock_guard<std::mutex> lk(impl_->m);
+    if (!impl_->hay_programa) {
+        impl_->programa_actual = Programa{};
+        impl_->programa_actual.titulo = "Programa rápido";
+        impl_->hay_programa = true;
+        impl_->estado.programa_titulo = impl_->programa_actual.titulo;
+    }
+    Escenario esc;
+    esc.id     = SiguienteIdEscenario(impl_->programa_actual);
+    esc.nombre = "Canto: " + detalle.titulo;
+    for (const auto& sec : detalle.secciones) {
+        if (sec.lineas.empty()) continue;
+        Elemento el;
+        el.id          = SiguienteIdElemento(impl_->programa_actual);
+        el.tipo        = TipoElemento::Texto;
+        el.titulo      = sec.etiqueta.empty() ? sec.tipo : sec.etiqueta;
+        el.tono_origen = detalle.tono_origen;
+        el.tono_actual = detalle.tono_origen;
+        el.bpm         = detalle.bpm;
+        for (const auto& l : sec.lineas) el.lineas.push_back(LineaTexto{l, ""});
+        esc.elementos.push_back(std::move(el));
+    }
+    if (esc.elementos.empty()) return false;
+    impl_->programa_actual.escenarios.push_back(std::move(esc));
+    if (escenario_out)
+        *escenario_out = impl_->programa_actual.escenarios.back().id;
+    if (primer_elemento_out)
+        *primer_elemento_out =
+            impl_->programa_actual.escenarios.back().elementos.front().id;
+    impl_->Emitir(EventoMotor::ProgramaCargado);
+    return true;
+}
+
+bool Engine::AgregarVersiculo(const std::string& cita,
+                              const std::string& biblia,
+                              bool tercio,
+                              std::string* escenario_out,
+                              std::string* elemento_out) {
+    if (cita.empty()) return false;
+    // Texto del versículo: la biblia pedida si existe (apertura temporal),
+    // si no la activa. Nunca silencioso: falso si la cita no resuelve.
+    std::string texto;
+    bool ok = false;
+    {
+        if (!biblia.empty() && biblia != impl_->estado.biblia_activa) {
+            BibleDatabase temp;
+            if (temp.Abrir(rutas::BibliaFdb(biblia + ".fdb"))) {
+                std::vector<Versiculo> vs;
+                ok = temp.ObtenerCita(cita, &vs);
+                for (auto& v : vs) texto += v.texto + " ";
+                temp.Cerrar();
+            }
+        } else if (impl_->biblia_activa) {
+            std::vector<Versiculo> vs;
+            ok = impl_->biblia_activa->ObtenerCita(cita, &vs);
+            for (auto& v : vs) texto += v.texto + " ";
+        }
+    }
+    if (!ok) return false;
+
+    std::lock_guard<std::mutex> lk(impl_->m);
+    if (!impl_->hay_programa) {
+        impl_->programa_actual = Programa{};
+        impl_->programa_actual.titulo = "Programa rápido";
+        impl_->hay_programa = true;
+        impl_->estado.programa_titulo = impl_->programa_actual.titulo;
+    }
+    Escenario esc;
+    esc.id     = SiguienteIdEscenario(impl_->programa_actual);
+    esc.nombre = cita;
+    Elemento el;
+    el.id              = SiguienteIdElemento(impl_->programa_actual);
+    el.tipo            = TipoElemento::Versiculo;
+    el.titulo          = cita;
+    el.cita            = cita;
+    el.biblia          = biblia.empty() ? impl_->estado.biblia_activa : biblia;
+    el.texto_versiculo = texto;
+    el.modo_versiculo  = tercio ? ModoVersiculo::Tercio : ModoVersiculo::Completo;
+    esc.elementos.push_back(std::move(el));
+    impl_->programa_actual.escenarios.push_back(std::move(esc));
+    if (escenario_out) *escenario_out = impl_->programa_actual.escenarios.back().id;
+    if (elemento_out)  *elemento_out  = impl_->programa_actual.escenarios.back().elementos.front().id;
+    impl_->Emitir(EventoMotor::ProgramaCargado);
+    return true;
+}
+
+bool Engine::AgregarPptx(const std::string& ruta,
+                         std::string* escenario_out,
+                         int* diapositivas_out) {
+    // Lectura directa (ISO/IEC-29500): NUNCA ejecuta nada del paquete.
+    std::vector<DiapositivaPptx> diapos;
+    InfoPptx info = LectorPptx::LeerArchivo(ruta, &diapos);
+    if (!info.ok || diapos.empty()) return false;
+
+    std::lock_guard<std::mutex> lk(impl_->m);
+    if (!impl_->hay_programa) {
+        impl_->programa_actual = Programa{};
+        impl_->programa_actual.titulo = "Programa rápido";
+        impl_->hay_programa = true;
+        impl_->estado.programa_titulo = impl_->programa_actual.titulo;
+    }
+    Escenario esc;
+    esc.id     = SiguienteIdEscenario(impl_->programa_actual);
+    esc.nombre = "PPTX: " + ruta;
+    for (const auto& d : diapos) {
+        Elemento el;
+        el.id         = SiguienteIdElemento(impl_->programa_actual);
+        el.tipo       = TipoElemento::Pptx;
+        el.modo_pptx  = ModoPptx::Directo;
+        el.ruta       = ruta;
+        el.diapositiva = d.indice;   // 1-based del orden real p:sldIdLst
+        el.titulo     = d.titulo.empty()
+                            ? "Diapositiva " + std::to_string(d.indice)
+                            : d.titulo;
+        esc.elementos.push_back(std::move(el));
+    }
+    impl_->programa_actual.escenarios.push_back(std::move(esc));
+    if (escenario_out) *escenario_out = impl_->programa_actual.escenarios.back().id;
+    if (diapositivas_out) *diapositivas_out = static_cast<int>(diapos.size());
+    impl_->Emitir(EventoMotor::ProgramaCargado);
+    return true;
+}
+
+bool Engine::QuitarElemento(const std::string& escenario_id,
+                            const std::string& elemento_id) {
+    std::lock_guard<std::mutex> lk(impl_->m);
+    for (auto& esc : impl_->programa_actual.escenarios) {
+        if (esc.id != escenario_id) continue;
+        for (auto it = esc.elementos.begin(); it != esc.elementos.end(); ++it) {
+            if (it->id == elemento_id) {
+                esc.elementos.erase(it);
+                // Escenario vacío: fuera (nada que proyectar en él).
+                if (esc.elementos.empty()) {
+                    auto& es = impl_->programa_actual.escenarios;
+                    es.erase(std::remove_if(es.begin(), es.end(),
+                            [&](const Escenario& e) {
+                                return e.id == escenario_id;
+                            }), es.end());
+                }
+                impl_->Emitir(EventoMotor::ProgramaCargado);
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+std::string Engine::ProgramaEstado() const {
+    std::lock_guard<std::mutex> lk(impl_->m);
+    if (!impl_->hay_programa) return "";
+    return AhpFormat::Serializar(impl_->programa_actual);
 }
 
 // --- Proyección --------------------------------------------------------
@@ -412,14 +624,45 @@ std::vector<std::string> Engine::FavoritosBiblia() const {
     return impl_->biblia_activa->Favoritos();
 }
 
+bool Engine::SeleccionarBiblia(const std::string& nombre) {
+    if (nombre.empty()) return false;
+    // Solo nombres que realmente existen en la carpeta de biblias.
+    bool existe = false;
+    for (const auto& b : ListarBiblias())
+        if (b == nombre) { existe = true; break; }
+    if (!existe) return false;
+
+    auto nueva = std::make_unique<BibleDatabase>();
+    if (!nueva->Abrir(rutas::BibliaFdb(nombre + ".fdb"))) return false;
+    std::lock_guard<std::mutex> lk(impl_->m);
+    if (impl_->biblia_activa) impl_->biblia_activa->Cerrar();
+    impl_->biblia_activa = std::move(nueva);
+    impl_->estado.biblia_activa = nombre;
+    rutas::Bitacora("biblia activa: " + nombre + " (" +
+                    std::to_string(impl_->biblia_activa->TotalVersiculos()) +
+                    " versículos)");
+    return true;
+}
+
+std::string Engine::BibliaActiva() const {
+    std::lock_guard<std::mutex> lk(impl_->m);
+    return impl_->estado.biblia_activa;
+}
+
+std::vector<LibroBiblia> Engine::ListarLibros() const {
+    if (!impl_->biblia_activa) return {};
+    return impl_->biblia_activa->ListarLibros();
+}
+
+std::vector<int> Engine::ListarCapitulos(int libro_id) const {
+    if (!impl_->biblia_activa) return {};
+    return impl_->biblia_activa->ListarCapitulos(libro_id);
+}
+
 // --- Cantos ------------------------------------------------------------
-std::vector<std::string> Engine::ListarCantos() const {
+std::vector<Canto> Engine::ListarCantos() const {
     if (!impl_->canciones) return {};
-    auto lista = impl_->canciones->ListarTodos();
-    std::vector<std::string> out;
-    out.reserve(lista.size());
-    for (auto& c : lista) out.push_back(c.titulo);
-    return out;
+    return impl_->canciones->ListarTodos();
 }
 
 std::vector<Canto> Engine::BuscarCantos(const std::string& texto,
