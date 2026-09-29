@@ -207,16 +207,35 @@ bool Engine::AbrirPrograma(const std::string& ruta) {
     Programa p;
     std::string err;
     if (!AhpFormat::Cargar(ruta, &p, &err)) return false;
-    std::lock_guard<std::mutex> lk(impl_->m);
-    impl_->programa_actual = std::move(p);
-    impl_->hay_programa    = true;
-    impl_->estado.programa_ruta   = ruta;
-    impl_->estado.programa_titulo = impl_->programa_actual.titulo;
-    impl_->estado.escenario_id.clear();
-    impl_->estado.elemento_id.clear();
-    impl_->estado.linea_actual = 0;
-    impl_->Emitir(EventoMotor::ProgramaCargado);
+    {
+        std::lock_guard<std::mutex> lk(impl_->m);
+        impl_->programa_actual = std::move(p);
+        impl_->hay_programa    = true;
+        impl_->estado.programa_ruta   = ruta;
+        impl_->estado.programa_titulo = impl_->programa_actual.titulo;
+        impl_->estado.escenario_id.clear();
+        impl_->estado.elemento_id.clear();
+        impl_->estado.linea_actual = 0;
+        impl_->Emitir(EventoMotor::ProgramaCargado);
+    }
+    RegistrarReciente(ruta);
     return true;
+}
+
+void Engine::RegistrarReciente(const std::string& ruta) {
+    if (ruta.empty()) return;
+    const std::string ruta_sesion = Sesion::RutaPorDefecto();
+    Sesion s;
+    if (!Sesion::Cargar(ruta_sesion, &s)) s = Sesion{};
+    auto& rec = s.recientes;
+    for (auto it = rec.begin(); it != rec.end(); ++it)
+        if (it->ruta == ruta) { rec.erase(it); break; }
+    Sesion::Reciente r;
+    r.ruta = ruta;
+    r.veces_usado = 1;
+    rec.insert(rec.begin(), std::move(r));
+    if (rec.size() > 10) rec.resize(10);
+    (void)Sesion::Guardar(ruta_sesion, s);
 }
 
 bool Engine::NuevoPrograma(const std::string& titulo) {
@@ -233,12 +252,16 @@ bool Engine::NuevoPrograma(const std::string& titulo) {
 }
 
 bool Engine::GuardarPrograma(const std::string& ruta) {
-    std::lock_guard<std::mutex> lk(impl_->m);
-    if (!impl_->hay_programa) return false;
-    std::string destino = ruta.empty() ? impl_->estado.programa_ruta : ruta;
-    if (destino.empty()) return false;
-    if (!AhpFormat::Guardar(destino, impl_->programa_actual)) return false;
-    impl_->estado.programa_ruta = destino;
+    std::string destino;
+    {
+        std::lock_guard<std::mutex> lk(impl_->m);
+        if (!impl_->hay_programa) return false;
+        destino = ruta.empty() ? impl_->estado.programa_ruta : ruta;
+        if (destino.empty()) return false;
+        if (!AhpFormat::Guardar(destino, impl_->programa_actual)) return false;
+        impl_->estado.programa_ruta = destino;
+    }
+    RegistrarReciente(destino);
     return true;
 }
 

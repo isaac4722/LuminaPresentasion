@@ -53,6 +53,8 @@
     <Reference Include="System.Net.Http" />
     <Reference Include="System.IO.Compression" />
     <Reference Include="System.IO.Compression.FileSystem" />
+    <!-- Parseo ipc.v1 en la consola (sin NuGet, regla 100% offline). -->
+    <Reference Include="System.Web.Extensions" />
   </ItemGroup>
 
   <ItemGroup>
@@ -73,6 +75,7 @@
     <Compile Include="Forms\DiagnosticForm.cs" />
     <Compile Include="Forms\DiagnosticForm.Designer.cs" />
     <Compile Include="Ipc\IpcClient.cs" />
+    <Compile Include="Ipc\IpcJson.cs" />
     <Compile Include="Interop\ImportadorPptx.cs" />
     <Compile Include="Data\AhpProgram.cs" />
     <Compile Include="Data\Scenario.cs" />

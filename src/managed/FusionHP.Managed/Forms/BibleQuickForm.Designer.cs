@@ -14,6 +14,7 @@ namespace FusionHP.Managed.Forms
         private System.Windows.Forms.TextBox txtCita;
         private System.Windows.Forms.Button btnIr;
         private System.Windows.Forms.Button btnFavorito;
+        private System.Windows.Forms.Button btnAgregar;
         private System.Windows.Forms.Button btnTercio;
         private System.Windows.Forms.TextBox txtResultado;
 
@@ -23,6 +24,7 @@ namespace FusionHP.Managed.Forms
             txtCita = new System.Windows.Forms.TextBox();
             btnIr = new System.Windows.Forms.Button();
             btnFavorito = new System.Windows.Forms.Button();
+            btnAgregar = new System.Windows.Forms.Button();
             btnTercio = new System.Windows.Forms.Button();
             txtResultado = new System.Windows.Forms.TextBox();
 
@@ -46,22 +48,28 @@ namespace FusionHP.Managed.Forms
             btnFavorito.Size = new System.Drawing.Size(100, 25);
             btnFavorito.Click += new System.EventHandler(btnFavorito_Click);
 
-            btnTercio.Text = "Modo Tercio (lower)";
-            btnTercio.Location = new System.Drawing.Point(500, 39);
-            btnTercio.Size = new System.Drawing.Size(150, 25);
+            btnAgregar.Text = "Agregar al programa";
+            btnAgregar.Location = new System.Drawing.Point(500, 39);
+            btnAgregar.Size = new System.Drawing.Size(150, 25);
+            btnAgregar.Click += new System.EventHandler(btnAgregar_Click);
+
+            btnTercio.Text = "Modo Tercio (proyectar)";
+            btnTercio.Location = new System.Drawing.Point(660, 39);
+            btnTercio.Size = new System.Drawing.Size(180, 25);
             btnTercio.Click += new System.EventHandler(btnTercio_Click);
 
             txtResultado.Location = new System.Drawing.Point(12, 75);
-            txtResultado.Size = new System.Drawing.Size(640, 400);
+            txtResultado.Size = new System.Drawing.Size(840, 400);
             txtResultado.Multiline = true;
             txtResultado.Font = new System.Drawing.Font("Libre Baskerville", 14F);
             txtResultado.ReadOnly = true;
 
-            ClientSize = new System.Drawing.Size(670, 500);
+            ClientSize = new System.Drawing.Size(870, 500);
             Controls.Add(lblTitulo);
             Controls.Add(txtCita);
             Controls.Add(btnIr);
             Controls.Add(btnFavorito);
+            Controls.Add(btnAgregar);
             Controls.Add(btnTercio);
             Controls.Add(txtResultado);
             Text = "FUSION-HP — Biblia rápida (G)";

@@ -17,6 +17,7 @@ namespace FusionHP.Managed.Forms
         private System.Windows.Forms.Button btnPresentar;
         private System.Windows.Forms.Button btnBiblioteca;
         private System.Windows.Forms.Button btnEstadoSistema;
+        private System.Windows.Forms.Button btnAbrirPrograma;
         private System.Windows.Forms.Label lblRecientesTitulo;
         private System.Windows.Forms.ListBox lstRecientes;
         private System.Windows.Forms.Label lblConfig;
@@ -28,6 +29,7 @@ namespace FusionHP.Managed.Forms
             btnPresentar = new System.Windows.Forms.Button();
             btnBiblioteca = new System.Windows.Forms.Button();
             btnEstadoSistema = new System.Windows.Forms.Button();
+            btnAbrirPrograma = new System.Windows.Forms.Button();
             lblRecientesTitulo = new System.Windows.Forms.Label();
             lstRecientes = new System.Windows.Forms.ListBox();
             lblConfig = new System.Windows.Forms.Label();
@@ -58,18 +60,23 @@ namespace FusionHP.Managed.Forms
             btnEstadoSistema.Size = new System.Drawing.Size(200, 80);
             btnEstadoSistema.Click += new System.EventHandler(btnEstadoSistema_Click);
 
+            btnAbrirPrograma.Text = "Abrir programa (.ahp)...";
+            btnAbrirPrograma.Location = new System.Drawing.Point(24, 170);
+            btnAbrirPrograma.Size = new System.Drawing.Size(200, 28);
+            btnAbrirPrograma.Click += new System.EventHandler(btnAbrirPrograma_Click);
+
             lblRecientesTitulo.AutoSize = true;
             lblRecientesTitulo.Font = new System.Drawing.Font("Outfit", 14F);
-            lblRecientesTitulo.Location = new System.Drawing.Point(24, 200);
+            lblRecientesTitulo.Location = new System.Drawing.Point(24, 206);
             lblRecientesTitulo.Text = "Recientes";
 
-            lstRecientes.Location = new System.Drawing.Point(24, 232);
+            lstRecientes.Location = new System.Drawing.Point(24, 238);
             lstRecientes.Size = new System.Drawing.Size(848, 200);
             lstRecientes.DoubleClick += new System.EventHandler(lstRecientes_DoubleClick);
 
             lblConfig.AutoSize = true;
             lblConfig.Location = new System.Drawing.Point(24, 460);
-            lblConfig.Text = "Configuración: (cargando)";
+            lblConfig.Text = "Núcleo: (conectando...)";
 
             ClientSize = new System.Drawing.Size(900, 500);
             Controls.Add(lblTitulo);
@@ -77,6 +84,7 @@ namespace FusionHP.Managed.Forms
             Controls.Add(btnPresentar);
             Controls.Add(btnBiblioteca);
             Controls.Add(btnEstadoSistema);
+            Controls.Add(btnAbrirPrograma);
             Controls.Add(lblRecientesTitulo);
             Controls.Add(lstRecientes);
             Controls.Add(lblConfig);

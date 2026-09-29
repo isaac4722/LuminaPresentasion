@@ -16,6 +16,11 @@ namespace FusionHP.Managed.Forms
         private System.Windows.Forms.ToolStripMenuItem abrirToolStripMenuItem;
         private System.Windows.Forms.ToolStripMenuItem guardarToolStripMenuItem;
         private System.Windows.Forms.ToolStripMenuItem exportarCSVToolStripMenuItem;
+        private System.Windows.Forms.ToolStripMenuItem contenidoToolStripMenuItem;
+        private System.Windows.Forms.ToolStripMenuItem agregarCantoToolStripMenuItem;
+        private System.Windows.Forms.ToolStripMenuItem agregarVersiculoToolStripMenuItem;
+        private System.Windows.Forms.ToolStripMenuItem agregarPptxToolStripMenuItem;
+        private System.Windows.Forms.ToolStripMenuItem quitarElementoToolStripMenuItem;
         private System.Windows.Forms.ListBox lstEscenarios;
         private System.Windows.Forms.Button btnAgregarEscenario;
         private System.Windows.Forms.Panel lienzo;
@@ -29,6 +34,11 @@ namespace FusionHP.Managed.Forms
             abrirToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             guardarToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             exportarCSVToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            contenidoToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            agregarCantoToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            agregarVersiculoToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            agregarPptxToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            quitarElementoToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             lstEscenarios = new System.Windows.Forms.ListBox();
             btnAgregarEscenario = new System.Windows.Forms.Button();
             lienzo = new System.Windows.Forms.Panel();
@@ -47,6 +57,21 @@ namespace FusionHP.Managed.Forms
             guardarToolStripMenuItem.Click += new System.EventHandler(guardarToolStripMenuItem_Click);
             exportarCSVToolStripMenuItem.Text = "Exportar historial a CSV";
             exportarCSVToolStripMenuItem.Click += new System.EventHandler(exportarCSVToolStripMenuItem_Click);
+
+            menu.Items.Add(contenidoToolStripMenuItem);
+            contenidoToolStripMenuItem.DropDownItems.AddRange(new System.Windows.Forms.ToolStripMenuItem[] {
+                agregarCantoToolStripMenuItem, agregarVersiculoToolStripMenuItem,
+                agregarPptxToolStripMenuItem, quitarElementoToolStripMenuItem
+            });
+            contenidoToolStripMenuItem.Text = "Contenido";
+            agregarCantoToolStripMenuItem.Text = "Agregar canto... (Biblioteca)";
+            agregarCantoToolStripMenuItem.Click += new System.EventHandler(agregarCantoToolStripMenuItem_Click);
+            agregarVersiculoToolStripMenuItem.Text = "Agregar versículo... (Biblia rápida)";
+            agregarVersiculoToolStripMenuItem.Click += new System.EventHandler(agregarVersiculoToolStripMenuItem_Click);
+            agregarPptxToolStripMenuItem.Text = "Agregar presentación pptx... (modo directo)";
+            agregarPptxToolStripMenuItem.Click += new System.EventHandler(agregarPptxToolStripMenuItem_Click);
+            quitarElementoToolStripMenuItem.Text = "Quitar elemento seleccionado";
+            quitarElementoToolStripMenuItem.Click += new System.EventHandler(quitarElementoToolStripMenuItem_Click);
 
             lstEscenarios.Location = new System.Drawing.Point(0, 27);
             lstEscenarios.Size = new System.Drawing.Size(220, 500);

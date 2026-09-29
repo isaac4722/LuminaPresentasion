@@ -156,6 +156,11 @@ public:
     bool BibliaLista() const;
 
 private:
+    // Actualiza runtime/session.json con la ruta al frente (sin duplicar,
+    // tope 10). La llamaban 'recientes' pero NADIE las escribía: la
+    // pantalla de inicio siempre mostraba la lista vacía.
+    void RegistrarReciente(const std::string& ruta);
+
     struct Impl;
     std::unique_ptr<Impl> impl_;
 };
