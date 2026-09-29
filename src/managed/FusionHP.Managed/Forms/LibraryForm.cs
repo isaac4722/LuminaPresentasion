@@ -201,10 +201,13 @@ namespace FusionHP.Managed.Forms
                     string test = IpcJson.Texto(lb, "testamento");
                     int numero = IpcJson.Entero(lb, "numero");
                     TreeNode padre = test == "NT" ? raizNt : raizAt;
-                    var nodo = padre.Nodes.Add(new TreeNode(nombre)
+                    // OJO: Add(TreeNode) devuelve int (índice), no el nodo:
+                    // crear el nodo, agregarlo y conservar la referencia.
+                    var nodo = new TreeNode(nombre)
                     {
                         Tag = new InfoNodoLibro { Numero = numero, EsLibro = true }
-                    });
+                    };
+                    padre.Nodes.Add(nodo);
                     nodo.Nodes.Add(new TreeNode("..."));   // capítulos perezosos
                 }
             }

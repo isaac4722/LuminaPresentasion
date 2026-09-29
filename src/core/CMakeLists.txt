@@ -180,6 +180,7 @@ if(FUSION_BUILD_TESTS)
         ${FUSION_SRC_DIR}/data/BibleDatabase.cpp
         ${FUSION_SRC_DIR}/data/SemillaCantos.cpp
         ${FUSION_SRC_DIR}/core/HerenciaTemas.cpp
+        ${FUSION_SRC_DIR}/core/IpcDespacho.cpp
         ${FUSION_SRC_DIR}/core/RenderDirecto.cpp
         ${FUSION_SRC_DIR}/core/PlanPptx.cpp
         ${FUSION_SRC_DIR}/core/PlanExport.cpp
