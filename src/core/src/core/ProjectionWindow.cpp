@@ -9,6 +9,7 @@
 #include <vector>
 #include <memory>
 #include <string>
+#include <functional>
 
 namespace fusion {
 
@@ -42,13 +43,15 @@ LRESULT CALLBACK WndProc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
             }
             break;
         case WM_PAINT: {
+            // SIN FillRect negro: aquí el dueño dibuja el contenido real.
+            // El fondo de clase es nullptr para que el sistema no borre
+            // con negro antes de repintar.
             PAINTSTRUCT ps;
-            HDC hdc = BeginPaint(h, &ps);
-            RECT rc; GetClientRect(h, &rc);
-            HBRUSH br = CreateSolidBrush(RGB(0,0,0));
-            FillRect(hdc, &rc, br);
-            DeleteObject(br);
+            BeginPaint(h, &ps);
             EndPaint(h, &ps);
+            auto cb = static_cast<std::function<void()>*>(
+                GetWindowLongPtrW(h, GWLP_USERDATA));
+            if (cb && *cb) (*cb)();
             return 0;
         }
     }
@@ -64,7 +67,7 @@ void RegistrarClase() {
     wc.hInstance     = GetModuleHandleW(nullptr);
     wc.lpszClassName = kClass;
     wc.hCursor       = LoadCursor(nullptr, IDC_ARROW);
-    wc.hbrBackground = reinterpret_cast<HBRUSH>(GetStockObject(BLACK_BRUSH));
+    wc.hbrBackground = nullptr;   // el repintado dibuja TODO (nada de negro)
     static ATOM atom = RegisterClassExW(&wc);
     (void)atom;
 }
@@ -75,12 +78,23 @@ struct ProjectionWindow::Impl {
     HWND hwnd = nullptr;
     MonitorId monitor_actual;
     bool visible = false;
+    std::function<void()> repintado;
 
     ~Impl() { if (hwnd) DestroyWindow(hwnd); }
 };
 
 ProjectionWindow::ProjectionWindow()  : impl_(std::make_unique<Impl>()) {}
 ProjectionWindow::~ProjectionWindow() = default;
+
+void ProjectionWindow::SetRepintado(std::function<void()> cb) {
+    impl_->repintado = std::move(cb);
+    if (impl_->hwnd) {
+        // WndProc no tiene acceso al Impl: el callback viaja por
+        // GWLP_USERDATA (creado antes en Crear()).
+        SetWindowLongPtrW(impl_->hwnd, GWLP_USERDATA,
+                          reinterpret_cast<LONG_PTR>(&impl_->repintado));
+    }
+}
 
 bool ProjectionWindow::Crear(const MonitorId& monitor) {
     RegistrarClase();
@@ -93,6 +107,11 @@ bool ProjectionWindow::Crear(const MonitorId& monitor) {
         style, 0, 0, 100, 100,
         nullptr, nullptr, GetModuleHandleW(nullptr), nullptr);
     if (!impl_->hwnd) return false;
+
+    if (impl_->repintado) {
+        SetWindowLongPtrW(impl_->hwnd, GWLP_USERDATA,
+                          reinterpret_cast<LONG_PTR>(&impl_->repintado));
+    }
 
     // Empezar oculta
     ShowWindow(impl_->hwnd, SW_HIDE);
@@ -115,6 +134,7 @@ bool ProjectionWindow::Mostrar() {
                   GetSystemMetrics(SM_CYSCREEN),
                   SWP_SHOWWINDOW);
     impl_->visible = true;
+    InvalidateRect(impl_->hwnd, nullptr, FALSE);
     return true;
 }
 

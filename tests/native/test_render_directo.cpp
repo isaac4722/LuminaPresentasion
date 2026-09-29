@@ -29,6 +29,7 @@ public:
 
     bool Inicializar(void*) override { return true; }
     void Liberar() override {}
+    bool Redimensionar(int, int) override { return true; }
     void Limpiar() override {}
     void Presentar() override {}
 

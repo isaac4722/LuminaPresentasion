@@ -5,6 +5,7 @@
 
 #pragma once
 
+#include <functional>
 #include <string>
 #include <memory>
 #include <vector>
@@ -41,6 +42,11 @@ public:
 
     bool EsVisible() const;
     void* Hwnd() const;  // HWND para que Renderer se enganche
+
+    // Callback de repintado: WM_PAINT lo invoca para que el dueño
+    // (Engine) vuelva a dibujar el contenido actual. Sin esto, cualquier
+    // invalidación del sistema borraba la proyección a negro.
+    void SetRepintado(std::function<void()> cb);
 
     // Lista los monitores disponibles (con nombre amigable).
     static std::vector<MonitorId> ListarMonitores();

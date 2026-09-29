@@ -38,6 +38,10 @@ std::string BitacoraNucleo();     // ...\runtime\nucleo.log
 // Variante ancha de carpeta de biblias (para barrer con FindFirstFileW).
 std::wstring CarpetaBibliasW();
 
+// Carpeta de assets del operador (logo de reposo, fondos):
+//   <raíz de datos>\data\assets
+std::wstring CarpetaAssetsW();
+
 // Semilla de RVR1909 (asset de solo lectura junto al ejecutable):
 //   <exe>\data\bibles\RVR1909.json   (vacío si no existe)
 std::string SemillaRVR1909Json();

@@ -52,6 +52,11 @@ public:
     virtual bool Inicializar(void* hwnd_salida) = 0;
     virtual void Liberar() = 0;
 
+    // Redimensiona el target al tamaño de cliente actual del HWND.
+    // Necesario cuando la ventana pasa de oculta (100x100) a pantalla
+    // completa: sin esto el dibujo sale recortado al primer tamaño.
+    virtual bool Redimensionar(int w, int h) = 0;
+
     virtual void Limpiar() = 0;
     virtual void Presentar() = 0;
 

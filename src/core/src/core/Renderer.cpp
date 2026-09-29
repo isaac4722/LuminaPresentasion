@@ -39,6 +39,7 @@ class RendererNull : public Renderer {
 public:
     bool Inicializar(void*) override { return true; }
     void Liberar() override {}
+    bool Redimensionar(int, int) override { return true; }
     void Limpiar() override {}
     void Presentar() override {}
     void DibujarFondo(const Fondo&) override {}
@@ -95,6 +96,12 @@ public:
         rt_.Reset();
         dw_.Reset();
         d2d_.Reset();
+    }
+
+    bool Redimensionar(int w, int h) override {
+        if (!rt_ || w <= 0 || h <= 0) return false;
+        return SUCCEEDED(rt_->Resize(D2D1::SizeU(
+            static_cast<UINT32>(w), static_cast<UINT32>(h))));
     }
 
     void Limpiar() override {

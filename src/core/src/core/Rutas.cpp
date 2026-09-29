@@ -97,6 +97,10 @@ std::wstring CarpetaBibliasW() {
     return RaizDatosW() + L"\\data\\bibles";
 }
 
+std::wstring CarpetaAssetsW() {
+    return RaizDatosW() + L"\\data\\assets";
+}
+
 std::string CarpetaBiblias() { return AUtf8(CarpetaBibliasW()); }
 
 std::string BibliaFdb(const std::string& nombre_fdb) {

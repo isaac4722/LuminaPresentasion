@@ -95,6 +95,10 @@ public:
     // Proyección -------------------------------------------------------
     bool IniciarProyeccion();
     bool DetenerProyeccion();
+    // Dibuja el estado actual (elemento/línea, negro, logo) en la ventana
+    // de proyección. La pieza que faltaba: el motor CREABA un renderer
+    // Direct2D pero NUNCA dibujaba — la proyección era una pantalla negra.
+    void Repintar();
     bool IrEscenario(const std::string& escenario_id);
     bool IrElemento(const std::string& escenario_id,
                     const std::string& elemento_id);

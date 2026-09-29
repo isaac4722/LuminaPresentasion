@@ -15,6 +15,7 @@
 #include "fusion/data/AhpFormat.h"
 #include "fusion/data/SemillaCantos.h"
 #include "fusion/core/PptxDirecto.h"
+#include "fusion/core/RenderDirecto.h"
 #include "Navegacion.h"
 
 #define WIN32_LEAN_AND_MEAN
@@ -42,6 +43,30 @@ struct Engine::Impl {
     // Programa cargado (navegación real y GuardarPrograma).
     Programa programa_actual;
     bool     hay_programa = false;
+
+    // Caché del paquete pptx del elemento actual (leer el ZIP por cambio
+    // de estado sería inaceptable en directo; se relee solo al cambiar
+    // de archivo).
+    std::string                  pptx_ruta_cache;
+    bool                         pptx_ok = false;
+    std::vector<DiapositivaPptx> pptx_diapos;
+    long long                    pptx_ancho_emu = 0;
+    long long                    pptx_alto_emu  = 0;
+
+    void CargarPptxSiFalta(const std::string& ruta) {
+        if (pptx_ok && pptx_ruta_cache == ruta) return;
+        pptx_ok = false;
+        pptx_ruta_cache = ruta;
+        pptx_diapos.clear();
+        InfoPptx info = LectorPptx::LeerArchivo(ruta, &pptx_diapos);
+        if (info.ok && !pptx_diapos.empty()) {
+            pptx_ok         = true;
+            pptx_ancho_emu  = info.ancho_emu;
+            pptx_alto_emu   = info.alto_emu;
+        } else {
+            pptx_diapos.clear();
+        }
+    }
 
     void Emitir(EventoMotor e) {
         // Ya llega con el mutex del estado tomado (o en fase de salida).
@@ -129,6 +154,7 @@ bool Engine::Iniciar() {
     impl_->renderer = CrearRendererDirect2D();
     if (impl_->ventana && impl_->ventana->Hwnd()) {
         impl_->renderer->Inicializar(impl_->ventana->Hwnd());
+        impl_->ventana->SetRepintado([this]() { Repintar(); });
     }
 
     // BDs en la raíz de datos ESCRIBIBLE (portable: junto al exe;
@@ -479,6 +505,7 @@ bool Engine::IniciarProyeccion() {
         impl_->estado.salida_visible = true;
         impl_->Emitir(EventoMotor::SalidaCambiada);
     }
+    Repintar();   // primera pintura con contenido (nunca negro)
     return true;
 }
 
@@ -493,6 +520,221 @@ bool Engine::DetenerProyeccion() {
     return true;
 }
 
+// --- Repintado (la proyección DIBUJA contenido) -------------------------
+namespace {
+
+// Tema de reposo/pantalla por defecto mientras el operador no cargue
+// temas por IPC (E_UNSUPPORTED hoy). Gradiente sobrio + texto blanco.
+Fondo FondoPorDefecto() {
+    Fondo f;
+    f.tipo   = Fondo::Tipo::Gradiente;
+    f.color1 = Color::DesdeHex("#101B33");
+    f.color2 = Color::DesdeHex("#2C4A6E");
+    return f;
+}
+
+EstiloTexto EstiloGrande(float alto_px) {
+    EstiloTexto e;
+    e.familia = L"Segoe UI";
+    e.tamano  = std::max(28.0f, alto_px * 0.11f);
+    e.color   = { 255, 255, 255 };
+    e.negrita = true;
+    return e;
+}
+
+EstiloTexto EstiloCita(float alto_px) {
+    EstiloTexto e;
+    e.familia = L"Segoe UI";
+    e.tamano  = std::max(20.0f, alto_px * 0.05f);
+    e.color   = { 190, 214, 240 };
+    e.negrita = false;
+    return e;
+}
+
+} // namespace
+
+void Engine::Repintar() {
+    if (!impl_->renderer || !impl_->ventana) return;
+    HWND hwnd = static_cast<HWND>(impl_->ventana->Hwnd());
+    if (!hwnd) return;
+
+    std::lock_guard<std::mutex> lk(impl_->m);
+    if (!impl_->estado.salida_visible) return;
+
+    // La ventana nace 100x100 oculta y pasa a pantalla completa: el
+    // target DEBE seguir al tamaño real del cliente en cada repintado.
+    RECT rc; GetClientRect(hwnd, &rc);
+    const float w = static_cast<float>(rc.right - rc.left);
+    const float h = static_cast<float>(rc.bottom - rc.top);
+    if (w <= 0.0f || h <= 0.0f) return;
+    impl_->renderer->Redimensionar(static_cast<int>(w), static_cast<int>(h));
+
+    impl_->renderer->Limpiar();
+
+    // Negro: pantalla sin contenido (atalajo B).
+    if (impl_->estado.negro) {
+        impl_->renderer->Presentar();
+        return;
+    }
+
+    // Logo de reposo: dibuja data\assets\logo\reposo.png si el operador
+    // lo puso; si no, pantalla de marca sobria (nunca silencio).
+    if (impl_->estado.logo) {
+        Fondo f;
+        f.tipo = Fondo::Tipo::Solido;
+        f.color1 = Color::DesdeHex("#0B1220");
+        impl_->renderer->DibujarFondo(f);
+        const std::wstring ruta_logo =
+            rutas::CarpetaAssetsW() + L"\\logo\\reposo.png";
+        if (rutas::ExisteArchivo(ruta_logo)) {
+            impl_->renderer->DibujarImagen(ruta_logo,
+                                           w * 0.30f, h * 0.30f,
+                                           w * 0.40f, h * 0.40f,
+                                           AjusteImagen::Contener);
+        } else {
+            EstiloTexto marca = EstiloGrande(h);
+            marca.tamano = h * 0.09f;
+            impl_->renderer->DibujarTexto(
+                L"FUSION-HP", marca, 0, h * 0.40f, w, h * 0.14f);
+            EstiloTexto sub = EstiloCita(h);
+            impl_->renderer->DibujarTexto(
+                L"Proyección en reposo", sub, 0, h * 0.56f, w, h * 0.08f);
+        }
+        impl_->renderer->Presentar();
+        return;
+    }
+
+    // Elemento actual del programa (si los ids resuelven).
+    const Escenario* esc = nullptr;
+    const Elemento*  el  = nullptr;
+    if (impl_->hay_programa) {
+        for (const auto& e : impl_->programa_actual.escenarios)
+            if (e.id == impl_->estado.escenario_id) { esc = &e; break; }
+        if (esc)
+            for (const auto& e : esc->elementos)
+                if (e.id == impl_->estado.elemento_id) { el = &e; break; }
+    }
+
+    if (!el) {
+        // Sin elemento: fondo del tema y nada más (pantalla limpia).
+        impl_->renderer->DibujarFondo(FondoPorDefecto());
+        impl_->renderer->Presentar();
+        return;
+    }
+
+    switch (el->tipo) {
+        case TipoElemento::Texto: {
+            impl_->renderer->DibujarFondo(FondoPorDefecto());
+            const int nl = static_cast<int>(el->lineas.size());
+            if (nl > 0) {
+                const int li = std::min(std::max(impl_->estado.linea_actual, 0),
+                                        nl - 1);
+                const std::wstring linea = Utf8AUtf16(el->lineas[li].texto);
+                EstiloTexto estilo = EstiloGrande(h);
+                if (nl > 1) estilo.tamano *= 0.85f;
+                impl_->renderer->DibujarTexto(linea, estilo,
+                                              0, h * 0.32f, w, h * 0.36f);
+                if (nl > 1) {
+                    // Pista de progreso: “línea/total” discreta abajo.
+                    EstiloTexto pista = EstiloCita(h);
+                    pista.tamano = std::max(14.0f, h * 0.035f);
+                    impl_->renderer->DibujarTexto(
+                        Utf8AUtf16(std::to_string(li + 1) + " / " +
+                                   std::to_string(nl)),
+                        pista, w * 0.85f, h * 0.93f, w * 0.13f, h * 0.05f);
+                }
+            }
+            break;
+        }
+        case TipoElemento::Versiculo: {
+            impl_->renderer->DibujarFondo(FondoPorDefecto());
+            const std::wstring cita  = Utf8AUtf16(el->cita);
+            const std::wstring texto = Utf8AUtf16(el->texto_versiculo);
+            if (el->modo_versiculo == ModoVersiculo::Tercio) {
+                // Lower third: banda inferior, cita y texto compactos.
+                impl_->renderer->DibujarTexto(cita, EstiloCita(h),
+                                              0, h * 0.72f, w, h * 0.08f);
+                EstiloTexto cuerpo = EstiloGrande(h);
+                cuerpo.tamano = h * 0.055f;
+                impl_->renderer->DibujarTexto(texto, cuerpo,
+                                              0, h * 0.80f, w, h * 0.18f);
+            } else {
+                impl_->renderer->DibujarTexto(cita, EstiloCita(h),
+                                              0, h * 0.10f, w, h * 0.09f);
+                EstiloTexto cuerpo = EstiloGrande(h);
+                cuerpo.tamano = h * 0.075f;
+                impl_->renderer->DibujarTexto(texto, cuerpo,
+                                              0, h * 0.22f, w, h * 0.66f);
+            }
+            break;
+        }
+        case TipoElemento::Pptx: {
+            // Modo directo: rasteriza la diapositiva con el motor propio
+            // (sin PowerPoint; el paquete NUNCA se ejecuta).
+            impl_->CargarPptxSiFalta(el->ruta);
+            const int idx = el->diapositiva > 0
+                                ? el->diapositiva - 1 : 0;
+            if (impl_->pptx_ok &&
+                idx < static_cast<int>(impl_->pptx_diapos.size())) {
+                const DiapositivaPptx& d = impl_->pptx_diapos[idx];
+                ResolucionTema vacia;
+                const float aspecto =
+                    impl_->pptx_ancho_emu > 0 && impl_->pptx_alto_emu > 0
+                        ? static_cast<float>(impl_->pptx_ancho_emu) /
+                              static_cast<float>(impl_->pptx_alto_emu)
+                        : 16.0f / 9.0f;
+                PlanRenderDirecto plan;
+                OpcionesRenderDirecto ops;
+                ops.ancho_emu = impl_->pptx_ancho_emu;
+                ops.alto_emu  = impl_->pptx_alto_emu;
+                RenderDirecto::ConstruirPlan(d, vacia, aspecto, &plan, ops);
+                DibujarPlan(impl_->renderer.get(), plan, w, h);
+            } else {
+                impl_->renderer->DibujarFondo(FondoPorDefecto());
+                EstiloTexto aviso = EstiloCita(h);
+                impl_->renderer->DibujarTexto(
+                    L"No se pudo leer el paquete pptx", aviso,
+                    0, h * 0.45f, w, h * 0.10f);
+            }
+            break;
+        }
+        case TipoElemento::Imagen: {
+            impl_->renderer->DibujarImagen(
+                Utf8AUtf16(el->ruta), 0, 0, w, h, el->ajuste);
+            break;
+        }
+        case TipoElemento::LowerThird: {
+            Fondo f = FondoPorDefecto();
+            impl_->renderer->DibujarFondo(f);
+            EstiloTexto cuerpo = EstiloGrande(h);
+            cuerpo.tamano = h * 0.06f;
+            impl_->renderer->DibujarTexto(Utf8AUtf16(el->titulo), cuerpo,
+                                          0, h * 0.78f, w, h * 0.14f);
+            if (!el->sub_lower.empty()) {
+                EstiloTexto sub = EstiloCita(h);
+                impl_->renderer->DibujarTexto(Utf8AUtf16(el->sub_lower), sub,
+                                              0, h * 0.92f, w, h * 0.07f);
+            }
+            break;
+        }
+        case TipoElemento::Video:
+            // La reproducción por elemento la lleva VideoPlayer fuera del
+            // repintado; aquí solo fondo y título (nada silencioso).
+            impl_->renderer->DibujarFondo(FondoPorDefecto());
+            {
+                EstiloTexto titulo = EstiloCita(h);
+                impl_->renderer->DibujarTexto(Utf8AUtf16(el->titulo), titulo,
+                                              0, h * 0.45f, w, h * 0.10f);
+            }
+            break;
+        default:
+            impl_->renderer->DibujarFondo(FondoPorDefecto());
+            break;
+    }
+
+    impl_->renderer->Presentar();
+}
+
 bool Engine::IrEscenario(const std::string& escenario_id) {
     {
         std::lock_guard<std::mutex> lk(impl_->m);
@@ -501,6 +743,7 @@ bool Engine::IrEscenario(const std::string& escenario_id) {
         impl_->estado.linea_actual = 0;
         impl_->Emitir(EventoMotor::EstadoCambiado);
     }
+    Repintar();
     return true;
 }
 
@@ -513,6 +756,7 @@ bool Engine::IrElemento(const std::string& escenario_id,
         impl_->estado.linea_actual = 0;
         impl_->Emitir(EventoMotor::EstadoCambiado);
     }
+    Repintar();
     return true;
 }
 
@@ -526,6 +770,7 @@ bool Engine::IrLinea(const std::string& escenario_id,
         impl_->estado.linea_actual = linea;
         impl_->Emitir(EventoMotor::EstadoCambiado);
     }
+    Repintar();
     return true;
 }
 
@@ -540,6 +785,7 @@ bool Engine::Siguiente() {
         }
     }
     impl_->Emitir(EventoMotor::EstadoCambiado);
+    Repintar();
     return se_movio;
 }
 
@@ -554,6 +800,7 @@ bool Engine::Anterior() {
         }
     }
     impl_->Emitir(EventoMotor::EstadoCambiado);
+    Repintar();
     return se_movio;
 }
 
@@ -563,6 +810,7 @@ bool Engine::SetNegro(bool activo) {
         impl_->estado.negro = activo;
         impl_->Emitir(EventoMotor::SalidaCambiada);
     }
+    Repintar();
     return true;
 }
 
@@ -572,6 +820,7 @@ bool Engine::SetLogo(bool activo) {
         impl_->estado.logo = activo;
         impl_->Emitir(EventoMotor::SalidaCambiada);
     }
+    Repintar();
     return true;
 }
 
