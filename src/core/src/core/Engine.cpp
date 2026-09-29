@@ -13,6 +13,7 @@
 #include "fusion/data/SongDatabase.h"
 #include "fusion/data/BibleDatabase.h"
 #include "fusion/data/AhpFormat.h"
+#include "fusion/data/SemillaCantos.h"
 #include "fusion/core/PptxDirecto.h"
 #include "Navegacion.h"
 
@@ -78,6 +79,24 @@ void SembrarBibliaRVR1909SiFalta() {
                     " versículos");
 }
 
+// Primer arranque del cancionero: si no hay NINGÚN canto, siembra
+// himnos clásicos de dominio público (SemillaCantos) para que la
+// Biblioteca no abra vacía. UNA transacción (lección de la siembra de
+// la biblia: sin transacción, cada INSERT vuelca a disco).
+void SembrarCantosSiFaltan(SongDatabase* db) {
+    if (!db) return;
+    if (!db->ListarTodos().empty()) return;   // ya tiene cantos: no tocar
+    auto semilla = semillacantos::Generar();
+    if (semilla.empty()) return;
+    db->IniciarTransaccion();
+    int n = 0;
+    for (const auto& c : semilla)
+        if (db->InsertarCanto(c, "semilla") > 0) ++n;
+    db->ConfirmarTransaccion();
+    rutas::Bitacora("cancionero sembrado con " + std::to_string(n) +
+                    " cantos clásicos (dominio público)");
+}
+
 } // namespace
 
 bool Engine::Iniciar() {
@@ -118,6 +137,7 @@ bool Engine::Iniciar() {
     impl_->canciones = std::make_unique<SongDatabase>();
     if (impl_->canciones->Abrir(rutas::CancioneroFdb())) {
         rutas::Bitacora("cancionero.fdb listo en la raíz de datos");
+        SembrarCantosSiFaltan(impl_->canciones.get());
     } else {
         rutas::Bitacora("AVISO: no se pudo abrir/crear cancionero.fdb en "
                         "la raíz de datos");

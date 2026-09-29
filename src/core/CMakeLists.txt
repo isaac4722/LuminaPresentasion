@@ -122,6 +122,7 @@ add_executable(FusionCore WIN32
     ${FUSION_SRC_DIR}/data/SongDatabase.cpp
     ${FUSION_SRC_DIR}/data/BibleDatabase.cpp
     ${FUSION_SRC_DIR}/data/AhpFormat.cpp
+    ${FUSION_SRC_DIR}/data/SemillaCantos.cpp
 
     ${FUSION_SRC_DIR}/importers/HolyricsJson.cpp
     ${FUSION_SRC_DIR}/importers/ZefaniaXml.cpp
@@ -164,11 +165,15 @@ if(FUSION_BUILD_TESTS)
         ${CMAKE_SOURCE_DIR}/../../tests/native/test_planes.cpp
         ${CMAKE_SOURCE_DIR}/../../tests/native/test_pptx_directo.cpp
         ${CMAKE_SOURCE_DIR}/../../tests/native/test_exportadores.cpp
+        ${CMAKE_SOURCE_DIR}/../../tests/native/test_ipc_despacho.cpp
+        ${CMAKE_SOURCE_DIR}/../../tests/native/test_navegacion.cpp
+        ${CMAKE_SOURCE_DIR}/../../tests/native/test_semilla_cantos.cpp
 
         ${FUSION_SRC_DIR}/Version.cpp
         ${FUSION_SRC_DIR}/data/AhpFormat.cpp
         ${FUSION_SRC_DIR}/data/SongDatabase.cpp
         ${FUSION_SRC_DIR}/data/BibleDatabase.cpp
+        ${FUSION_SRC_DIR}/data/SemillaCantos.cpp
         ${FUSION_SRC_DIR}/core/HerenciaTemas.cpp
         ${FUSION_SRC_DIR}/core/RenderDirecto.cpp
         ${FUSION_SRC_DIR}/core/PlanPptx.cpp
