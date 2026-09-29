@@ -753,3 +753,57 @@ Piezas (1 pieza = 1 commit, en orden de causa raíz):
 
 Verificación: suite local gcc-14 168 casos / 1.281 aserciones VERDE
 (-Wall -Wextra, 0 avisos). CI: ver run del push d597b12 (10 jobs).
+
+---
+
+## Sesión XIII — "la app funciona": contenido real de punta a punta + miniz
+
+Síntoma del propietario: la app abre, pero LO QUE SE CREA NO SIRVE.
+Auditoría confirmó tres capas del mismo problema:
+
+1. La consola (gestionada) mostraba DATOS FALSOS: 3 cantos fijos,
+   "Libro 1..Libro 66", monitores inventados, autotest fingido. Jamás
+   llamaba al IPC aunque el núcleo ya atendía todo.
+2. No había forma de ARMAR un culto: el núcleo no exponía
+   programa.agregar_*; el cancionero nacía VACÍO; los recientes jamás se
+   escribían; no se podía elegir la biblia activa ni leer capítulos.
+3. Lo peor: la ventana de proyección SOLO PINTABA NEGRO (el motor creaba
+   un renderer Direct2D y nunca lo usaba; el WM_PAINT hacía FillRect negro).
+
+Piezas (1 pieza = 1 commit, español):
+
+- feat(ipc) 6c96af4: programa construible por IPC (agregar_texto/canto/
+  versiculo/pptx, estado, quitar_elemento), biblia completa (libros,
+  capitulos, seleccionar, estado con biblia_activa), canto.listar
+  estructurado con id; ahp.v1 gana campo diapositiva; 14 tests nuevos.
+- feat(data): SemillaCantos — 8 himnos de dominio público con secciones
+  reales, sembrados SOLO si el cancionero está vacío y en UNA transacción;
+  CMakeLists registraba test_ipc_despacho/test_navegacion que faltaban.
+- feat(ipc): biblia.capitulo y biblia.favorito.agregar (el árbol de la
+  Biblioteca sirve capítulos enteros).
+- feat(nucleo) 58bdeda: Engine::Repintar — la proyección DIBUJA: texto
+  (línea actual + pista n/total), versículo (completo/tercio), pptx
+  rasterizado con el motor directo (caché por ruta), imagen, lower third,
+  negro y logo de reposo (CarpetaAssetsW). Repintado en cada cambio y en
+  WM_PAINT vía SetRepintado (sin FillRect negro ni fondo de clase).
+  Renderer::Redimensionar: la ventana nace 100x100 y pasa a fullscreen.
+- feat(gestionada): las 7 ventanas operan el núcleo real — IpcJson
+  (JavaScriptSerializer del framework, sin NuGet), recientes REALES
+  (Engine::RegistrarReciente al abrir/guardar), Biblioteca completa
+  (cantos+filtro+agregar; biblia seleccionable; árbol 66 libros →
+  capítulos → texto), Presentar (monitores reales, árbol navegable,
+  estado en vivo Timer 500 ms), Biblia rápida (obtener/favorito/agregar/
+  tercio que proyecta), Modo operador (búsqueda que agrega y proyecta,
+  transporte), Diagnóstico (autotest real + bitácora), Estudio
+  (nuevo/abrir/guardar reales, agregar texto/pptx, quitar, CSV).
+- feat(export) miniz: dependencia APROBADA integrada (3.0.2, MIT) y EN
+  USO: exportador pptx con entradas DEFLATE (método 8); tests de método,
+  extracción y CRC; THIRD_PARTY_LICENSES alineado en el mismo commit.
+
+Verificación local: 189 casos / 1427 aserciones (gcc-14, -Wall -Wextra,
+0 avisos). El lector PPTX propio verifica CRC al releer los paquetes
+deflate (round-trips intactos).
+
+Lección de sesión: el transporte de esta consola come las secuencias
+"[m" del texto de herramientas (las confunde con ANSI); cualquier
+diagnóstico que dependa de ver "[m" literal debe pasarse por Python.
