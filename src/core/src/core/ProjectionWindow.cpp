@@ -49,7 +49,9 @@ LRESULT CALLBACK WndProc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
             PAINTSTRUCT ps;
             BeginPaint(h, &ps);
             EndPaint(h, &ps);
-            auto cb = static_cast<std::function<void()>*>(
+            // LONG_PTR → puntero: SOLO reinterpret_cast (static_cast de
+            // entero a puntero no es válido y MSVC lo rechaza).
+            auto cb = reinterpret_cast<std::function<void()>*>(
                 GetWindowLongPtrW(h, GWLP_USERDATA));
             if (cb && *cb) (*cb)();
             return 0;

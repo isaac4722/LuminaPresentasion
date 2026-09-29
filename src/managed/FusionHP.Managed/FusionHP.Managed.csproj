@@ -53,8 +53,8 @@
     <Reference Include="System.Net.Http" />
     <Reference Include="System.IO.Compression" />
     <Reference Include="System.IO.Compression.FileSystem" />
-    <!-- Parseo ipc.v1 en la consola (sin NuGet, regla 100% offline). -->
-    <Reference Include="System.Web.Extensions" />
+    <!-- Parseo ipc.v1 con parser propio (IpcJson.cs): sin dependencias
+         extra del framework y sin NuGet, coherente con 100% offline. -->
   </ItemGroup>
 
   <ItemGroup>
