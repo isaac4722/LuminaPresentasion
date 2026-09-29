@@ -4,6 +4,15 @@
 // estado de proyección: si la carcasa (C#/Qt) se cierra, el núcleo sigue
 // proyectando y atendiendo el teclado sobre la salida.
 //
+// Orden de arranque (lección del "no se puede conectar con el Core"):
+//   1. El servidor IPC se crea PRIMERO: el pipe \\.\pipe\FusionHP-ipc
+//      existe en milisegundos, pase lo que pase después.
+//   2. El motor carga después (ventana, D2D, BDs, siembra). Mientras
+//      carga, los comandos reciben E_CARGANDO (código explícito, nada
+//      silencioso); la consola reintenta hasta conectar y hasta que el
+//      núcleo responda con el motor listo.
+//   3. Loop de mensajes Win32.
+//
 // Arranque observable: cada paso queda en runtime/nucleo.log (sin
 // Registro, solo disco) y toda excepción atrapada deja la causa escrita
 // antes de salir con código distinto de 0. Nada de cierres mudos.
@@ -19,9 +28,12 @@
 #include "fusion/core/IpcDespacho.h"
 #include "fusion/core/Rutas.h"
 
+#include <atomic>
 #include <cstdio>
 #include <cstring>
 #include <string>
+
+#include "json.hpp"   // extraer el id del comando mientras el motor carga
 
 namespace {
 
@@ -46,6 +58,9 @@ CliArgs ParseCli(int argc, wchar_t** argv) {
     }
     return a;
 }
+
+// (RespuestaCargando vive en el despachador portable IpcDespacho.cpp:
+// testeable en el arnés local, misma estructura de error que el resto.)
 
 } // namespace
 
@@ -75,19 +90,24 @@ int APIENTRY wWinMain(HINSTANCE, HINSTANCE, PWSTR cmd_line, int) {
             return 0;
         }
 
-        // Modo normal: arrancar el motor y el servidor IPC
+        // Modo normal: PRIMERO el pipe IPC (existe en milisegundos).
         fusion::Engine motor;
-        if (!motor.Iniciar()) {
-            Bitacora("ERROR: fallo al iniciar el motor (código 2)");
-            return 2;
-        }
-        Bitacora("motor iniciado (ventana de proyección oculta + BDs)");
+        std::atomic<bool> motor_listo{false};
 
         fusion::IpcServer ipc;
-        // El despachador ipc.v1 sobre el motor: TODOS los comandos de la
-        // consola y del shell llegan aquí (antes no había handler y toda
-        // respuesta volvía vacía).
-        ipc.SetHandler([&motor](const fusion::MensajeIpc& m) {
+        ipc.SetHandler([&motor, &motor_listo](const fusion::MensajeIpc& m) {
+            if (!motor_listo.load()) {
+                // Extraer el id del mensaje para repetirlo en el error.
+                std::string id;
+                {
+                    nlohmann::json j = nlohmann::json::parse(
+                        m.raw_json, nullptr, false);
+                    if (!j.is_discarded() && j.contains("id") &&
+                        j["id"].is_string())
+                        id = j["id"].get<std::string>();
+                }
+                return fusion::RespuestaCargando(id);
+            }
             fusion::AdaptadorEngine adaptador(motor);
             return fusion::ProcesarIpc(adaptador, m);
         });
@@ -95,7 +115,19 @@ int APIENTRY wWinMain(HINSTANCE, HINSTANCE, PWSTR cmd_line, int) {
             Bitacora("ERROR: no se pudo iniciar el servidor IPC (código 4)");
             return 4;
         }
-        Bitacora("servidor IPC escuchando en \\\\.\\pipe\\FusionHP-ipc");
+        Bitacora("servidor IPC escuchando en \\\\.\\pipe\\FusionHP-ipc "
+                 "(el motor carga ahora en segundo plano del arranque)");
+
+        // DESPUÉS el motor: ventana de proyección oculta + BDs (+ siembra
+        // de la RVR1909 en el primer arranque, hoy en una sola transacción
+        // de ~2,5 s; antes, minuto por minuto sin el pipe creado).
+        if (!motor.Iniciar()) {
+            Bitacora("ERROR: fallo al iniciar el motor (código 2)");
+            return 2;
+        }
+        motor_listo.store(true);
+        Bitacora("motor iniciado (ventana de proyección oculta + BDs): "
+                 "el IPC ya atiende comandos completos");
 
         // Loop de mensajes Win32: la ventana de proyección y el pipe IPC
         // manejan sus propios hilos. El hilo principal solo bombea mensajes.

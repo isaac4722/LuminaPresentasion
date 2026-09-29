@@ -163,4 +163,10 @@ private:
 // respuesta de error con el id repetido (o vacío si no llegó id).
 RespuestaIpc ProcesarIpc(IServicioNucleo& servicio, const MensajeIpc& entrada);
 
+// Respuesta "el núcleo aún está cargando": código explícito E_CARGANDO
+// con el id repetido. El núcleo crea el pipe IPC antes de cargar el motor
+// (el 'no se puede conectar con el Core' del primer arranque); mientras
+// carga, todos los comandos reciben esto.
+RespuestaIpc RespuestaCargando(const std::string& id);
+
 } // namespace fusion

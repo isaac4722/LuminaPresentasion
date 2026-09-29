@@ -5,6 +5,8 @@
 #include "doctest.h"
 #include "fusion/core/IpcDespacho.h"
 
+#include "json.hpp"
+
 #include <string>
 #include <vector>
 
@@ -333,4 +335,30 @@ TEST_CASE("ProcesarIpc: tema.* responde E_UNSUPPORTED explícito (sin silencio)"
     auto r = Enviar(s, R"({"ipc":"fusion","version":1,"type":"tema.listar","id":"m-24","payload":{}})");
     CHECK_FALSE(r.ok);
     CHECK(Tiene(r.raw_json, "E_UNSUPPORTED"));
+}
+
+// ---------------------------------------------------------------------------
+// Arranque en dos fases: el pipe existe antes de que el motor esté listo.
+// Mientras carga, todo comando recibe E_CARGANDO con el id repetido.
+// ---------------------------------------------------------------------------
+
+TEST_CASE("RespuestaCargando: E_CARGANDO con id repetido y estructura de error") {
+    auto r = RespuestaCargando("arranque-7");
+    CHECK_FALSE(r.ok);
+    CHECK_FALSE(r.suscribir);
+    CHECK(Tiene(r.raw_json, "\"id\":\"arranque-7\""));
+    CHECK(Tiene(r.raw_json, "E_CARGANDO"));
+    CHECK(Tiene(r.raw_json, "\"ok\":false"));
+    CHECK(Tiene(r.raw_json, "\"ipc\":\"fusion\""));
+    CHECK(Tiene(r.raw_json, "\"version\":1"));
+}
+
+TEST_CASE("RespuestaCargando: sin id no rompe el JSON") {
+    auto r = RespuestaCargando("");
+    CHECK_FALSE(r.ok);
+    CHECK(Tiene(r.raw_json, "E_CARGANDO"));
+    // JSON válido: el despachador lo podría volver a parsear.
+    nlohmann::json j = nlohmann::json::parse(r.raw_json, nullptr, false);
+    CHECK_FALSE(j.is_discarded());
+    CHECK(j.contains("error"));
 }

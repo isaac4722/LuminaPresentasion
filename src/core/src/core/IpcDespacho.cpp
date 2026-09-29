@@ -366,6 +366,15 @@ RespuestaIpc Despachar(IServicioNucleo& s, const std::string& tipo,
 
 } // namespace
 
+RespuestaIpc RespuestaCargando(const std::string& id) {
+    // El núcleo crea el pipe IPC ANTES de cargar el motor; mientras carga,
+    // todo comando recibe este código explícito (nada silencioso). El
+    // formato coincide con RespuestaError (misma estructura de error).
+    return RespuestaError(id, "E_CARGANDO",
+                          "el nucleo esta cargando la base de datos; "
+                          "reintenta en unos segundos");
+}
+
 RespuestaIpc ProcesarIpc(IServicioNucleo& servicio, const MensajeIpc& entrada) {
     json j;
     try {
