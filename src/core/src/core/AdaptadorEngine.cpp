@@ -85,6 +85,16 @@ std::vector<LibroBiblia> AdaptadorEngine::ListarLibros() {
 std::vector<int> AdaptadorEngine::ListarCapitulos(int libro_id) {
     return motor_.ListarCapitulos(libro_id);
 }
+std::vector<VersiculoIpc> AdaptadorEngine::ObtenerCapitulo(int libro_id,
+                                                           int capitulo) {
+    std::vector<VersiculoIpc> out;
+    for (const auto& v : motor_.ObtenerCapitulo(libro_id, capitulo))
+        out.push_back(VersiculoIpc{v.libro, v.capitulo, v.versiculo, v.texto});
+    return out;
+}
+bool AdaptadorEngine::AgregarFavorito(const std::string& cita) {
+    return motor_.AgregarFavorito(cita);
+}
 bool AdaptadorEngine::SeleccionarBiblia(const std::string& nombre) {
     return motor_.SeleccionarBiblia(nombre);
 }

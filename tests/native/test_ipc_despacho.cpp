@@ -102,6 +102,19 @@ struct ServicioFalso : IServicioNucleo {
         return libro_id == 1 ? std::vector<int>{1, 2, 3}
                              : std::vector<int>{1};
     }
+    std::vector<VersiculoIpc> ObtenerCapitulo(int libro_id,
+                                              int capitulo) override {
+        (void)capitulo;
+        if (libro_id == 1)
+            return {VersiculoIpc{"Génesis", 1, 1,
+                                "En el principio creó Dios los cielos"}};
+        return {};
+    }
+    bool AgregarFavorito(const std::string& cita) override {
+        ultima_favorito = cita;
+        return !cita.empty();
+    }
+    std::string ultima_favorito;
     bool SeleccionarBiblia(const std::string& nombre) override {
         ultima_biblia = nombre;
         return nombre == "RVR1909";
@@ -582,6 +595,24 @@ TEST_CASE("ProcesarIpc: canto.listar devuelve estructura con id") {
     CHECK(Tiene(r.raw_json, "\"id\":5"));
     CHECK(Tiene(r.raw_json, "Cuán grande es Él"));
     CHECK(Tiene(r.raw_json, "\"tono_origen\":\"C\""));
+}
+
+TEST_CASE("ProcesarIpc: biblia.capitulo da los versículos del capítulo") {
+    ServicioFalso s;
+    auto r = Enviar(s, R"({"ipc":"fusion","version":1,"type":"biblia.capitulo","id":"b-7","payload":{"libro":1,"capitulo":1}})");
+    REQUIRE(r.ok);
+    CHECK(Tiene(r.raw_json, "En el principio"));
+
+    auto r2 = Enviar(s, R"({"ipc":"fusion","version":1,"type":"biblia.capitulo","id":"b-8","payload":{"libro":1}})");
+    CHECK_FALSE(r2.ok);
+    CHECK(Tiene(r2.raw_json, "E_BAD_PAYLOAD"));
+}
+
+TEST_CASE("ProcesarIpc: biblia.favorito.agregar pasa la cita") {
+    ServicioFalso s;
+    auto r = Enviar(s, R"({"ipc":"fusion","version":1,"type":"biblia.favorito.agregar","id":"b-9","payload":{"cita":"Salmo 23:1"}})");
+    REQUIRE(r.ok);
+    CHECK(s.ultima_favorito == "Salmo 23:1");
 }
 
 TEST_CASE("ProcesarIpc: estado.lector incluye biblia_activa") {

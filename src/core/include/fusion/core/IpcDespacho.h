@@ -127,6 +127,9 @@ struct IServicioNucleo {
     // Biblia completa -------------------------------------------------------
     virtual std::vector<LibroBiblia> ListarLibros() = 0;
     virtual std::vector<int> ListarCapitulos(int libro_id) = 0;
+    virtual std::vector<VersiculoIpc> ObtenerCapitulo(int libro_id,
+                                                      int capitulo) = 0;
+    virtual bool AgregarFavorito(const std::string& cita) = 0;
     virtual bool SeleccionarBiblia(const std::string& nombre) = 0;
     virtual std::string BibliaActiva() = 0;
 
@@ -180,6 +183,8 @@ public:
 
     std::vector<LibroBiblia> ListarLibros() override;
     std::vector<int> ListarCapitulos(int libro_id) override;
+    std::vector<VersiculoIpc> ObtenerCapitulo(int libro_id, int capitulo) override;
+    bool AgregarFavorito(const std::string& cita) override;
     bool SeleccionarBiblia(const std::string& nombre) override;
     std::string BibliaActiva() override;
 

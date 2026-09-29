@@ -391,6 +391,33 @@ RespuestaIpc Despachar(IServicioNucleo& s, const std::string& tipo,
         return RespuestaOk(id, json{ {"libro", libro},
                                      {"capitulos", caps} });
     }
+    if (tipo == "biblia.capitulo") {
+        if (!p.contains("libro") || !p["libro"].is_number_integer())
+            return RespuestaError(id, "E_BAD_PAYLOAD",
+                                  "falta 'libro' (entero 1..66)");
+        int libro = p["libro"].get<int>();
+        if (libro < 1 || libro > 66)
+            return RespuestaError(id, "E_BAD_PAYLOAD",
+                                  "'libro' fuera de rango (1..66)");
+        int cap = p.value("capitulo", 0);
+        if (cap < 1 || cap > 150)
+            return RespuestaError(id, "E_BAD_PAYLOAD",
+                                  "falta 'capitulo' (1..150)");
+        json res;
+        res["libro"]     = libro;
+        res["capitulo"]  = cap;
+        res["versiculos"] = VersiculosJson(s.ObtenerCapitulo(libro, cap));
+        return RespuestaOk(id, res);
+    }
+    if (tipo == "biblia.favorito.agregar") {
+        std::string cita;
+        if (!Campo(p, "cita", &cita))
+            return RespuestaError(id, "E_BAD_PAYLOAD", "falta 'cita'");
+        if (!s.AgregarFavorito(cita))
+            return RespuestaError(id, "E_IO",
+                                  "no se pudo agregar el favorito: " + cita);
+        return RespuestaOk(id, json{ {"cita", cita} });
+    }
     if (tipo == "biblia.obtener") {
         std::string biblia = p.value("biblia", "");
         std::string cita;

@@ -130,6 +130,9 @@ public:
     // Árbol completo: 66 libros con nombre/abreviatura y sus capítulos.
     std::vector<LibroBiblia> ListarLibros() const;
     std::vector<int> ListarCapitulos(int libro_id) const;
+    // Versículos de un capítulo concreto (para el árbol de la Biblioteca).
+    std::vector<Versiculo> ObtenerCapitulo(int libro_id, int capitulo) const;
+    bool AgregarFavorito(const std::string& cita);
     bool ObtenerVersiculo(const std::string& biblia,
                           const std::string& cita,
                           std::string* texto_out) const;

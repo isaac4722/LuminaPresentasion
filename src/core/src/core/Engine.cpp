@@ -928,6 +928,16 @@ std::vector<int> Engine::ListarCapitulos(int libro_id) const {
     return impl_->biblia_activa->ListarCapitulos(libro_id);
 }
 
+std::vector<Versiculo> Engine::ObtenerCapitulo(int libro_id, int capitulo) const {
+    if (!impl_->biblia_activa) return {};
+    return impl_->biblia_activa->ObtenerCapitulo(libro_id, capitulo);
+}
+
+bool Engine::AgregarFavorito(const std::string& cita) {
+    if (!impl_->biblia_activa) return false;
+    return impl_->biblia_activa->AgregarFavorito(cita);
+}
+
 // --- Cantos ------------------------------------------------------------
 std::vector<Canto> Engine::ListarCantos() const {
     if (!impl_->canciones) return {};
