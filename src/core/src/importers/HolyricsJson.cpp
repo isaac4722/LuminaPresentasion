@@ -14,6 +14,7 @@
 
 #include "fusion/importers/HolyricsJson.h"
 #include "fusion/data/SongDatabase.h"
+#include "TransaccionImport.h"
 
 #include "json.hpp"
 
@@ -146,12 +147,18 @@ int HolyricsJson::Importar(SongDatabase& db, const std::string& ruta_json) {
     auto j = nlohmann::json::parse(ss.str(), nullptr, false);
     if (j.is_discarded() || !j.is_object()) return 0;
 
+    // UNA transacción para toda la importación (vuelco a disco único;
+    // lotes grandes de cantos eran igual de lentos que las biblias).
+    importadores::TransaccionImport<SongDatabase> tx(db);
+    if (!tx.Activa()) return 0;
+
     int insertados = 0;
 
     // Forma 1: canto único.
     auto it_song = j.find("song");
     if (it_song != j.end() && it_song->is_object()) {
         InsertarDesdeJson(db, *it_song, &insertados);
+        if (!tx.Confirma()) return 0;
         return insertados;
     }
 
@@ -171,9 +178,11 @@ int HolyricsJson::Importar(SongDatabase& db, const std::string& ruta_json) {
     if (lista) {
         for (const auto& item : *lista)
             InsertarDesdeJson(db, item, &insertados);
+        if (!tx.Confirma()) return 0;
         return insertados;
     }
 
+    if (!tx.Confirma()) return 0;
     return insertados;
 }
 

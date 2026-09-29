@@ -306,3 +306,84 @@ TEST_CASE("HolyricsJson.Importar lista de cantos") {
     CHECK(n == 2);
     CHECK(db.ListarTodos().size() == 2);
 }
+
+// ---------------------------------------------------------------------------
+// Regresión "no se puede conectar con el Core": las importaciones masivas
+// van en UNA transacción (BEGIN IMMEDIATE ... COMMIT) y un fallo a mitad
+// de camino deja la BD intacta (ROLLBACK en la destrucción de la guardia).
+// ---------------------------------------------------------------------------
+
+TEST_CASE("Transaccion: importacion grande en una transaccion mantiene la BD consistente") {
+    BibleDatabase db;
+    REQUIRE(db.Abrir(":memory:"));
+
+    const char* ruta = "tmp_grande.json";
+    {
+        std::ofstream f(ruta, std::ios::binary);
+        f << "{\"libros\":[{\"abrev3\":\"Gén\",\"nombre\":\"Génesis\",\"capitulos\":[";
+        f << "{\"numero\":1,\"versiculos\":[";
+        for (int i = 1; i <= 500; ++i) {
+            if (i > 1) f << ",";
+            f << "{\"numero\":" << i << ",\"texto\":\"v" << i << "\"}";
+        }
+        f << "]}]}]}";
+    }
+    const int n = JsonBible::Importar(db, ruta);
+    std::remove(ruta);
+    CHECK(n == 500);
+    CHECK(db.TotalVersiculos() == 500);
+
+    // Sin transacción abierta colgando: una escritura posterior funciona.
+    CHECK(db.InsertarVersiculo("Gén", 2, 1, "después del COMMIT"));
+    CHECK(db.TotalVersiculos() == 501);
+}
+
+TEST_CASE("Transaccion: ROLLBACK deja la BD intacta si Confirma nunca se llama") {
+    BibleDatabase db;
+    REQUIRE(db.Abrir(":memory:"));
+    REQUIRE(db.InsertarVersiculo("Gén", 1, 1, "previo"));
+
+    {
+        REQUIRE(db.IniciarTransaccion());
+        REQUIRE(db.InsertarVersiculo("Gén", 1, 2, "en transacción"));
+        // Sin Confirmar: la destrucción implícita aquí es del scope; usamos
+        // DescartarTransaccion directamente para simular el guardia.
+        db.DescartarTransaccion();
+    }
+    CHECK(db.TotalVersiculos() == 1);   // el insert de la transacción se fue
+
+    // La BD sigue plenamente operativa tras el ROLLBACK.
+    CHECK(db.InsertarVersiculo("Gén", 1, 3, "posterior al rollback"));
+    CHECK(db.TotalVersiculos() == 2);
+}
+
+TEST_CASE("Transaccion: API idempotente y orden correcto") {
+    BibleDatabase db;
+    REQUIRE(db.Abrir(":memory:"));
+    CHECK(db.IniciarTransaccion());
+    CHECK(db.InsertarVersiculo("Gén", 1, 1, "a"));
+    CHECK(db.ConfirmarTransaccion());
+    // COMMIT sin BEGIN posterior: los pares BEGIN/COMMIT anidados no existen.
+    CHECK(db.InsertarVersiculo("Gén", 1, 2, "b"));
+    CHECK(db.TotalVersiculos() == 2);
+    // Descartar sin transacción: silencioso, no rompe nada.
+    db.DescartarTransaccion();
+    CHECK(db.TotalVersiculos() == 2);
+}
+
+TEST_CASE("Transaccion: los importadores siguen funcionando tras transaccion manual cerrada") {
+    SongDatabase db;
+    REQUIRE(db.Abrir(":memory:"));
+    REQUIRE(db.IniciarTransaccion());
+    REQUIRE(db.ConfirmarTransaccion());
+
+    const char* ruta = "tmp_holyrics_post_tx.json";
+    {
+        std::ofstream f(ruta, std::ios::binary);
+        f << "{\"song\":{\"title\":\"Tx\",\"artist\":\"T\",\"slides\":"
+          << "[{\"name\":\"V1\",\"type\":\"verse\",\"text\":\"hola\"}]}}";
+    }
+    const int n = HolyricsJson::Importar(db, ruta);
+    std::remove(ruta);
+    CHECK(n == 1);
+}

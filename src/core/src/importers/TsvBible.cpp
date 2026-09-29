@@ -4,6 +4,7 @@
 
 #include "fusion/importers/TsvBible.h"
 #include "fusion/data/BibleDatabase.h"
+#include "TransaccionImport.h"
 
 #include <cstdio>
 #include <cstdlib>
@@ -47,6 +48,10 @@ int TsvBible::Importar(BibleDatabase& db, const std::string& ruta_tsv) {
     std::ifstream f(ruta_tsv, std::ios::binary);
     if (!f) return 0;
 
+    // UNA transacción para toda la importación (vuelco a disco único).
+    importadores::TransaccionImport<BibleDatabase> tx(db);
+    if (!tx.Activa()) return 0;
+
     int n = 0;
     std::string linea;
     bool primera = true;
@@ -82,6 +87,8 @@ int TsvBible::Importar(BibleDatabase& db, const std::string& ruta_tsv) {
 
         if (db.InsertarVersiculo(libro, cap, ver, texto)) ++n;
     }
+    // COMMIT: si falla el vuelco final, la destrucción de tx hace ROLLBACK.
+    if (!tx.Confirma()) return 0;
     return n;
 }
 

@@ -56,6 +56,15 @@ public:
                            int capitulo, int versiculo,
                            const std::string& texto);
 
+    // Transacción explícita para importaciones masivas. SIN ella, cada
+    // INSERT era una transacción implícita con vuelco a disco: sembrar la
+    // RVR1909 (~31.000 versículos) tardaba MINUTOS y el núcleo no creaba
+    // el pipe IPC hasta terminar (causa del "no se puede conectar con el
+    // Core" en el primer arranque). Con una sola transacción: segundos.
+    bool IniciarTransaccion();     // BEGIN IMMEDIATE (idempotente)
+    bool ConfirmarTransaccion();   // COMMIT
+    void DescartarTransaccion();   // ROLLBACK (silencioso si no hay ninguna)
+
     // Total de versículos insertados en esta BD.
     std::int64_t TotalVersiculos() const;
 

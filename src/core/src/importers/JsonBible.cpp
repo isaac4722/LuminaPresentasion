@@ -16,6 +16,7 @@
 
 #include "fusion/importers/JsonBible.h"
 #include "fusion/data/BibleDatabase.h"
+#include "TransaccionImport.h"
 
 #include "json.hpp"
 
@@ -32,9 +33,14 @@ int JsonBible::Importar(BibleDatabase& db, const std::string& ruta_json) {
     auto j = nlohmann::json::parse(ss.str(), nullptr, false);
     if (j.is_discarded() || !j.is_object()) return 0;
 
-    int n = 0;
     const auto libros = j.value("libros", nlohmann::json::array());
     if (!libros.is_array()) return 0;
+
+    // UNA transacción para toda la importación (vuelco a disco único).
+    importadores::TransaccionImport<BibleDatabase> tx(db);
+    if (!tx.Activa()) return 0;
+
+    int n = 0;
 
     for (const auto& lj : libros) {
         const std::string abrev3 = lj.value("abrev3", "");
@@ -61,6 +67,8 @@ int JsonBible::Importar(BibleDatabase& db, const std::string& ruta_json) {
             }
         }
     }
+    // COMMIT: si falla el vuelco final, la destrucción de tx hace ROLLBACK.
+    if (!tx.Confirma()) return 0;
     return n;
 }
 

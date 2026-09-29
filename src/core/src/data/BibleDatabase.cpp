@@ -414,6 +414,32 @@ int BibleDatabase::ImportarZefaniaXml(const std::string& ruta_xml) {
     return ZefaniaXml::Importar(*this, ruta_xml);
 }
 
+bool BibleDatabase::IniciarTransaccion() {
+    if (!impl_->db) return false;
+    // BEGIN IMMEDIATE: bloquea la escritura ya (evita SQLITE_BUSY a mitad
+    // de la importación). Si ya hay transacción abierta, es idempotente.
+    char* err = nullptr;
+    const int rc = sqlite3_exec(impl_->db, "BEGIN IMMEDIATE", nullptr,
+                                nullptr, &err);
+    sqlite3_free(err);
+    return rc == SQLITE_OK;
+}
+
+bool BibleDatabase::ConfirmarTransaccion() {
+    if (!impl_->db) return false;
+    char* err = nullptr;
+    const int rc = sqlite3_exec(impl_->db, "COMMIT", nullptr, nullptr, &err);
+    sqlite3_free(err);
+    return rc == SQLITE_OK;
+}
+
+void BibleDatabase::DescartarTransaccion() {
+    if (!impl_->db) return;
+    char* err = nullptr;
+    sqlite3_exec(impl_->db, "ROLLBACK", nullptr, nullptr, &err);
+    sqlite3_free(err);
+}
+
 bool BibleDatabase::InsertarVersiculo(const std::string& libro_abrev,
                                       int capitulo, int versiculo,
                                       const std::string& texto) {

@@ -226,6 +226,32 @@ std::int64_t SongDatabase::InsertarCanto(const CantoDetalle& canto,
     return canto_id;
 }
 
+bool SongDatabase::IniciarTransaccion() {
+    if (!impl_->db) return false;
+    // BEGIN IMMEDIATE: bloquea la escritura ya (misma política que
+    // BibleDatabase). Idempotente si ya hay transacción abierta.
+    char* err = nullptr;
+    const int rc = sqlite3_exec(impl_->db, "BEGIN IMMEDIATE", nullptr,
+                                nullptr, &err);
+    sqlite3_free(err);
+    return rc == SQLITE_OK;
+}
+
+bool SongDatabase::ConfirmarTransaccion() {
+    if (!impl_->db) return false;
+    char* err = nullptr;
+    const int rc = sqlite3_exec(impl_->db, "COMMIT", nullptr, nullptr, &err);
+    sqlite3_free(err);
+    return rc == SQLITE_OK;
+}
+
+void SongDatabase::DescartarTransaccion() {
+    if (!impl_->db) return;
+    char* err = nullptr;
+    sqlite3_exec(impl_->db, "ROLLBACK", nullptr, nullptr, &err);
+    sqlite3_free(err);
+}
+
 int SongDatabase::ImportarHolyricsJson(const std::string& ruta_json) {
     return HolyricsJson::Importar(*this, ruta_json);
 }

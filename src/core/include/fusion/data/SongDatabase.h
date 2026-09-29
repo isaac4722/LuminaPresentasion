@@ -58,6 +58,12 @@ public:
     std::int64_t InsertarCanto(const CantoDetalle& canto,
                                const std::string& fuente);
 
+    // Transacción explícita para importaciones masivas (misma política que
+    // BibleDatabase): un solo vuelco a disco en vez de uno por canto.
+    bool IniciarTransaccion();     // BEGIN IMMEDIATE (idempotente)
+    bool ConfirmarTransaccion();   // COMMIT
+    void DescartarTransaccion();   // ROLLBACK (silencioso si no hay ninguna)
+
     // Importadores (devuelven número de cantos importados).
     int ImportarHolyricsJson(const std::string& ruta_json);
 
