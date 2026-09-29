@@ -57,6 +57,7 @@
 
   <ItemGroup>
     <Compile Include="Program.cs" />
+    <Compile Include="Forms\EsperaConexionForm.cs" />
     <Compile Include="Forms\MainForm.cs" />
     <Compile Include="Forms\MainForm.Designer.cs" />
     <Compile Include="Forms\StudioForm.cs" />

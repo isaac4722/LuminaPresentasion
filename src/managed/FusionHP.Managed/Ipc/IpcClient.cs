@@ -72,6 +72,64 @@ namespace FusionHP.Managed.Ipc
         }
 
         /// <summary>
+        /// Conexión PACIENTE y cancelable (usada por la ventana de espera).
+        /// Hasta ~90 s de reintentos: el núcleo crea el pipe en milisegundos,
+        /// pero el primer arranque siembra la biblia y discos lentos/antivirus
+        /// pueden retrasarlo. <paramref name="cancelar"/> se consulta entre
+        /// intentos; si devuelve true, se abandona (el usuario canceló).
+        /// </summary>
+        public bool ConectarPaciente(Func<bool> cancelar)
+        {
+            UltimoError = null;
+            const int intentosMax = 40;
+            for (int intento = 1; intento <= intentosMax; ++intento)
+            {
+                if (cancelar != null && cancelar())
+                {
+                    UltimoError = "Espera cancelada por el operador.";
+                    return false;
+                }
+                try
+                {
+                    _pipe = new NamedPipeClientStream(
+                        ".", NombrePipe,
+                        PipeDirection.InOut, PipeOptions.Asynchronous);
+                    _pipe.Connect(kTimeoutMs);
+                    _reader = new StreamReader(_pipe, new UTF8Encoding(false));
+                    _writer = new StreamWriter(_pipe, new UTF8Encoding(false))
+                              { NewLine = "\n" };
+                    if (_pipe.IsConnected) return true;
+                    UltimoError = "El pipe quedó sin conectar tras Connect().";
+                }
+                catch (Exception ex)
+                {
+                    UltimoError = ex.Message;
+                }
+                Dispose();
+                if (intento < intentosMax)
+                {
+                    // Pausa troceada para responder rápido a la cancelación.
+                    for (int pausa = 0; pausa < 5; ++pausa)
+                    {
+                        if (cancelar != null && cancelar())
+                        {
+                            UltimoError = "Espera cancelada por el operador.";
+                            return false;
+                        }
+                        Thread.Sleep(100);
+                    }
+                }
+            }
+            UltimoError = "No se pudo abrir el pipe \\\\.\\pipe\\" + NombrePipe +
+                          " tras " + intentosMax + " intentos. Último error: " +
+                          (UltimoError ?? "desconocido") +
+                          ". ¿Arrancó FusionCore.exe? Revisa " +
+                          "runtime\\arranque.log y runtime\\nucleo.log " +
+                          "junto al programa.";
+            return false;
+        }
+
+        /// <summary>
         /// Envía un comando y espera la respuesta (con el mismo id).
         /// </summary>
         public string Enviar(string tipo, string payloadJson)

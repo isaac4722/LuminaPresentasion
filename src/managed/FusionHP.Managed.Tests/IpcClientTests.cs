@@ -55,5 +55,40 @@ namespace FusionHP.Managed.Tests
                     throw new Exception("Conectar falló sin dejar UltimoError");
             }
         }
+
+        [Test]
+        public void ConectarPaciente_CanceladoAlInicio_SaleSinColgarse()
+        {
+            // La conexión paciente del arranque (ventana "Conectando…")
+            // debe responder a la cancelación inmediata: false + detalle,
+            // sin excepción y en tiempo acotado (el primer intento de
+            // Connect(2000) puede llegar a esperar 2 s como mucho; con el
+            // check previo, lo normal es salir casi al instante).
+            using (var ipc = new IpcClient())
+            {
+                bool ok = ipc.ConectarPaciente(() => true);
+                if (ok)
+                    return;   // había un núcleo real: conexión legítima
+                if (string.IsNullOrEmpty(ipc.UltimoError))
+                    throw new Exception("ConectarPaciente falló sin " +
+                                        "UltimoError");
+            }
+        }
+
+        [Test]
+        public void ConectarPaciente_CancelacionTardia_SeRespetaEntreIntentos()
+        {
+            // Contador: cancela a partir del segundo sondeo de pausa. Esto
+            // recorre el camino "intento falló → pausa troceada → cancel".
+            using (var ipc = new IpcClient())
+            {
+                int llamadas = 0;
+                bool ok = ipc.ConectarPaciente(() => ++llamadas > 8);
+                if (ok) return;   // núcleo real presente
+                if (llamadas < 8)
+                    throw new Exception("La cancelación no se consultó: " +
+                                        llamadas + " llamadas");
+            }
+        }
     }
 }
